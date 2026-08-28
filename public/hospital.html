@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GoldenBay — Ambulance Bay</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div class="wrap wide">
+    <div class="demo-banner">⚠️ DEMO — synthetic data. This is the "plug-and-play screen" at a hospital ambulance bay: the ER sees the clinical picture <b>before</b> the patient arrives.</div>
+
+    <div class="bay-header">
+      <h1>🏥 Ambulance Bay — Incoming</h1>
+      <div class="clock" id="clock"></div>
+    </div>
+
+    <div class="bay-grid" id="grid"></div>
+    <div class="bay-empty" id="empty">
+      <p style="font-size:40px;margin:0">🩺</p>
+      <p>No incoming patients.<br />Trigger an emergency from the patient view and watch this screen light up.</p>
+    </div>
+
+    <p class="footer-note">GoldenBay hackathon prototype · synthetic data only · AI organises information, it does not diagnose</p>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="shared.js"></script>
+  <script src="hospital.js"></script>
+</body>
+</html>

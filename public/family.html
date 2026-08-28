@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GoldenBay — Family</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="demo-banner">⚠️ DEMO — synthetic data. In this view, a family member follows a loved one's emergency live.</div>
+    <header class="app">
+      <div class="logo">👪</div>
+      <div>
+        <h1>Family view</h1>
+        <p class="sub">You were notified because you're an emergency contact</p>
+      </div>
+    </header>
+
+    <div class="card" id="pickCard">
+      <h2>Active emergencies</h2>
+      <div id="list" class="muted">Loading…</div>
+    </div>
+
+    <div class="card hidden" id="liveCard">
+      <h2 id="who">Emergency</h2>
+      <ul class="timeline" id="timeline"></ul>
+      <div id="etaBox" class="hidden" style="text-align:center;margin:10px 0">
+        <div class="big-eta" id="etaMin">–</div>
+        <div class="muted">ambulance ETA (simulated)</div>
+      </div>
+      <h3>Hospital</h3>
+      <div id="hospitalBox" class="muted">–</div>
+      <h3>Live map</h3>
+      <div id="map" class="map"></div>
+      <p class="muted" style="margin-top:8px">In production you would receive this as a push notification the moment the SOS was pressed.</p>
+    </div>
+
+    <p class="footer-note">GoldenBay hackathon prototype · synthetic data only</p>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="shared.js"></script>
+  <script src="family.js"></script>
+</body>
+</html>

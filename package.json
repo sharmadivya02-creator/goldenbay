@@ -1,0 +1,17 @@
+{
+  "name": "goldenbay",
+  "version": "0.1.0",
+  "description": "GoldenBay — emergency response demo: right hospital, prepared before the patient arrives. Hackathon prototype with synthetic data only.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}

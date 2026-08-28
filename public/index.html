@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>GoldenBay — Emergency</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="demo-banner">⚠️ DEMO with synthetic data — not a real emergency service. In a real emergency in India, call <b>112</b> (or 108 for an ambulance).</div>
+
+    <header class="app">
+      <div class="logo">🌊</div>
+      <div>
+        <h1>GoldenBay</h1>
+        <p class="sub">Right hospital. Already prepared.</p>
+      </div>
+      <span class="ai-badge" id="aiBadge">…</span>
+    </header>
+
+    <!-- ============ PROFILE ============ -->
+    <div class="card" id="profileCard">
+      <h2>Health profile</h2>
+      <label>Who is this emergency for?</label>
+      <select id="profileSelect"></select>
+      <div class="row" style="margin-top:10px">
+        <button id="btnNewProfile" class="ghost">+ New profile</button>
+      </div>
+
+      <div id="profileForm" class="hidden">
+        <h3>New profile — AI can draft it from a prescription photo</h3>
+        <label>📷 Prescription / medical report photo (optional)</label>
+        <input type="file" id="rxPhoto" accept="image/*" />
+        <button id="btnDraft" style="margin-top:8px">✦ Draft profile with AI</button>
+        <p class="muted" id="draftStatus"></p>
+
+        <label>Full name *</label>
+        <input id="pfName" placeholder="e.g. Sunita Sharma" />
+        <div class="row">
+          <div><label>Age</label><input id="pfAge" type="number" min="0" max="120" /></div>
+          <div><label>Blood group</label><input id="pfBlood" placeholder="e.g. O+" /></div>
+        </div>
+        <label>Allergies (comma separated)</label>
+        <input id="pfAllergies" placeholder="e.g. Penicillin" />
+        <label>Current medications (comma separated)</label>
+        <input id="pfMeds" placeholder="e.g. Metformin 500mg twice daily" />
+        <label>Known conditions (comma separated)</label>
+        <input id="pfConditions" placeholder="e.g. Diabetes, Hypertension" />
+        <label>Emergency contact (name, phone)</label>
+        <input id="pfContact" placeholder="e.g. Priya Sharma, +91-9xxxxxxxxx" />
+        <p class="muted">You review everything the AI drafted before saving — the AI only drafts, humans confirm.</p>
+        <button id="btnSaveProfile" class="primary" style="margin-top:10px">Save profile</button>
+      </div>
+    </div>
+
+    <!-- ============ EMERGENCY BUTTON ============ -->
+    <div class="card" id="sosCard">
+      <div class="sos-zone">
+        <button class="sos" id="btnSos">SOS<small>tap for emergency</small></button>
+        <p class="sos-hint">One tap → GPS captured → describe in your own words</p>
+      </div>
+    </div>
+
+    <!-- ============ DESCRIBE ============ -->
+    <div class="card hidden" id="describeCard">
+      <h2>What's happening?</h2>
+      <p class="muted" id="locStatus">📡 Getting location…</p>
+      <div class="row">
+        <textarea id="description" placeholder="Plain words are fine — e.g. 'Papa is holding his chest and can't breathe properly'"></textarea>
+        <button class="mic" id="btnMic" title="Speak instead of typing">🎤</button>
+      </div>
+      <button class="primary" id="btnConfirm" style="width:100%;margin-top:10px">🚨 Confirm emergency</button>
+      <button class="ghost" id="btnCancel" style="width:100%;margin-top:8px">Cancel</button>
+    </div>
+
+    <!-- ============ LIVE STATUS ============ -->
+    <div class="card hidden" id="liveCard">
+      <h2>Emergency active <span class="muted" id="emgId"></span></h2>
+      <ul class="timeline" id="timeline"></ul>
+      <div id="etaBox" class="hidden" style="text-align:center;margin:10px 0">
+        <div class="big-eta" id="etaMin">–</div>
+        <div class="muted">ambulance ETA (simulated)</div>
+      </div>
+      <h3>Matched hospital</h3>
+      <div id="hospitalBox" class="muted">Matching…</div>
+      <h3>Clinical picture sent ahead</h3>
+      <div id="clinicalBox"></div>
+      <h3>Live map</h3>
+      <div id="map" class="map"></div>
+      <p class="muted" style="margin-top:8px">🚑 Ambulance movement is simulated for this demo. Family view and the hospital bay screen are watching this same emergency live.</p>
+    </div>
+
+    <div class="link-row">
+      <a href="/family" target="_blank">👪 Family view</a>
+      <a href="/hospital" target="_blank">🏥 Hospital bay screen</a>
+    </div>
+    <p class="footer-note">GoldenBay hackathon prototype · synthetic data only · AI organises information, it does not diagnose</p>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="shared.js"></script>
+  <script src="patient.js"></script>
+</body>
+</html>
