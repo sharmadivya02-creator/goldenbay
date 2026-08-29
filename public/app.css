@@ -378,6 +378,16 @@ ul.plain { margin: 6px 0; padding-left: 18px; font-size: 14px; }
 .sheet .grabber { width: 36px; height: 4px; border-radius: 99px; background: var(--border-strong); margin: 6px auto 12px; }
 .sheet h2 { font-size: 17px; font-weight: 800; }
 
+/* ---- Mic permission help modal ---- */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(20,14,12,0.55); z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.mic-help-card { background: var(--surface); border-radius: var(--radius-lg); padding: 22px 20px; max-width: 380px; width: 100%; max-height: 88vh; overflow-y: auto; box-shadow: 0 24px 60px -20px rgba(0,0,0,0.5); text-align: left; }
+.mic-help-icon { font-size: 30px; text-align: center; margin-bottom: 6px; }
+.mic-help-card h2 { font-size: 16.5px; font-weight: 800; text-align: center; margin-bottom: 10px; }
+.mic-help-card .muted { font-size: 13px; line-height: 1.5; }
+.mic-help-steps { margin: 12px 0; padding-left: 20px; font-size: 13.5px; line-height: 1.6; font-weight: 600; }
+.mic-help-steps li { margin-bottom: 6px; }
+.mic-help-steps li b { color: var(--text); }
+
 /* ---- Hospital bay screen ---- */
 .bay-header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; }
 .bay-header h1 { margin: 0; font-size: 24px; font-weight: 800; }

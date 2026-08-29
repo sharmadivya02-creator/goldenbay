@@ -441,8 +441,33 @@ function wireEmergency() {
   };
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  $('btnMic').onclick = () => {
+
+  // Browsers only ever show the native "Allow microphone?" popup themselves,
+  // the FIRST time a page asks — and only JS-triggered by calling
+  // rec.start()/getUserMedia(), never by us directly. Once someone has
+  // dismissed or blocked it, no amount of JS can bring that popup back —
+  // that's a deliberate browser security rule, not something a website can
+  // override. So: first attempt → let the browser's own popup happen
+  // naturally. If it's already blocked from a past visit, don't just fail
+  // silently — show clear, exact steps to re-enable it (and make sure
+  // typing is always right there as a zero-friction fallback either way).
+  $('btnMic').onclick = async () => {
     if (!SR) return toast('Voice input is not supported in this browser — type instead');
+
+    // Proactively check: if permission was already denied in an earlier
+    // visit, calling rec.start() would just fail instantly with no popup.
+    // Catch that case up front so we can show real instructions right away
+    // instead of a vague "didn't work" moment.
+    if (navigator.permissions?.query) {
+      try {
+        const status = await navigator.permissions.query({ name: 'microphone' });
+        if (status.state === 'denied') return showMicHelp();
+      } catch (_) {
+        // Some browsers don't support querying 'microphone' — fall through
+        // and let rec.start() itself surface the native prompt or error.
+      }
+    }
+
     const rec = new SR();
     rec.lang = 'en-IN';
     rec.interimResults = false;
@@ -452,9 +477,29 @@ function wireEmergency() {
       $('description').value = ($('description').value + ' ' + e.results[0][0].transcript).trim();
     };
     rec.onend = () => { $('btnMic').classList.remove('listening'); $('micLabel').textContent = 'TAP TO SPEAK'; };
-    rec.onerror = () => { $('btnMic').classList.remove('listening'); $('micLabel').textContent = 'TAP TO SPEAK'; toast('Mic unavailable — type instead'); };
+    rec.onerror = (e) => {
+      $('btnMic').classList.remove('listening');
+      $('micLabel').textContent = 'TAP TO SPEAK';
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        showMicHelp();
+      } else if (e.error === 'no-speech') {
+        toast('Didn’t catch anything — try again, or just type it below');
+      } else if (e.error === 'audio-capture') {
+        toast('No microphone found on this device — type instead');
+      } else if (e.error === 'network') {
+        toast('Voice input needs an internet connection right now — type instead');
+      } else {
+        toast('Mic unavailable — type instead');
+      }
+    };
     rec.start();
   };
+
+  function showMicHelp() {
+    $('micHelpModal').classList.remove('hidden');
+  }
+  $('btnMicHelpClose').onclick = () => $('micHelpModal').classList.add('hidden');
+  $('btnMicHelpOk').onclick = () => $('micHelpModal').classList.add('hidden');
 
   // Default OFF: GoldenBay's demo hospitals are all fixed in Delhi, so a real
   // GPS reading from anywhere else produces a real (huge) distance/ETA that
