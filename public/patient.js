@@ -197,6 +197,7 @@ function openDetail(id) {
   const history = [...(p.conditions || []), ...(p.pastEvents || [])];
   const contact = (p.emergencyContacts || [])[0];
   const rows = [
+    { type: 'bloodgroup', icon: 'heartPulse', tone: 'red', label: 'Blood group', value: p.bloodGroup || 'Not set' },
     { type: 'allergies', icon: 'alertTriangle', tone: 'red', label: 'Allergies', value: (p.allergies || []).length ? p.allergies.join(', ') : 'None recorded' },
     { type: 'medicines', icon: 'pill', tone: 'blue', label: 'Medicines', value: (p.medications || []).length ? p.medications.join(', ') : 'None recorded' },
     { type: 'history', icon: 'clock', tone: 'amber', label: 'History', value: history.length ? history.join(', ') : 'None recorded' },
@@ -228,6 +229,7 @@ function openDetail(id) {
 // Insurance opens this with the full list + any matching uploaded documents.
 // ---------------------------------------------------------------------------
 const ROW_META = {
+  bloodgroup: { title: 'Blood group', icon: 'heartPulse',    tone: 'red',   docCategory: null },
   allergies:  { title: 'Allergies',  icon: 'alertTriangle', tone: 'red',   docCategory: null },
   medicines:  { title: 'Medicines',  icon: 'pill',           tone: 'blue',  docCategory: 'prescription' },
   history:    { title: 'History',    icon: 'clock',          tone: 'amber', docCategory: 'report' },
@@ -255,7 +257,11 @@ function openRowDetail(type, p) {
   };color:${meta.tone === 'red' ? 'var(--red-dark)' : meta.tone === 'blue' ? 'var(--blue)' : meta.tone === 'green' ? 'var(--green)' : '#96701c'}">${icon(meta.icon, { size: 26 })}</div>
   <h2>${esc(p.fullName)}</h2><p>${meta.title}</p></div>`;
 
-  if (type === 'allergies') {
+  if (type === 'bloodgroup') {
+    body += p.bloodGroup
+      ? `<div class="bg-badge">${esc(p.bloodGroup)}</div><p class="muted" style="text-align:center;margin-top:12px">Blood group for ${esc(p.fullName.split(' ')[0])} — first responders check this before any transfusion.</p>`
+      : `<p class="muted" style="text-align:center">No blood group on file.</p>`;
+  } else if (type === 'allergies') {
     const items = p.allergies || [];
     body += items.length
       ? `<ul class="row-list">${items.map((a) => `<li class="row-item"><span class="dot"></span>${esc(a)}</li>`).join('')}</ul>`

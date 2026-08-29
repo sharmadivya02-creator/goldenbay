@@ -276,6 +276,8 @@ ul.plain { margin: 6px 0; padding-left: 18px; font-size: 14px; }
 .call-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background: var(--green); color: #fff; border: none; padding: 13px; border-radius: var(--radius-md); font-weight: 800; font-size: 15px; box-shadow: 0 8px 18px -8px rgba(47,143,91,0.5); }
 .map-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background: var(--blue); color: #fff; border: none; padding: 13px; border-radius: var(--radius-md); font-weight: 800; font-size: 15px; margin-top: 8px; box-shadow: 0 8px 18px -8px rgba(58,111,176,0.5); }
 
+.bg-badge { width: 88px; height: 88px; margin: 4px auto 0; border-radius: 50%; background: var(--red-soft); color: var(--red-dark); display: grid; place-items: center; font-size: 26px; font-weight: 800; border: 3px solid rgba(199,28,52,0.18); }
+
 .doc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
 .doc-thumb { position: relative; aspect-ratio: 3/4; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); background: var(--surface-alt); }
 .doc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -318,6 +320,7 @@ ul.plain { margin: 6px 0; padding-left: 18px; font-size: 14px; }
 .loc-note { font-size: 11.5px; color: #ffc7cc; margin-top: 6px; }
 .loc-toggle { display: flex; align-items: flex-start; gap: 7px; font-size: 11.5px; color: rgba(255,255,255,0.65); font-weight: 500; margin-top: 8px; cursor: pointer; }
 .loc-toggle input { width: auto; margin: 2px 0 0; accent-color: #fff; flex: none; }
+
 .mic-zone { text-align: center; padding: 22px 0 10px; }
 .mic-btn {
   width: 128px; height: 128px; border-radius: 50%; margin: 0 auto;
