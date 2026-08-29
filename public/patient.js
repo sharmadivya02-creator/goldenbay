@@ -480,6 +480,7 @@ function wireEmergency() {
     rec.onerror = (e) => {
       $('btnMic').classList.remove('listening');
       $('micLabel').textContent = 'TAP TO SPEAK';
+      console.warn('[GoldenBay] speech recognition error:', e.error);
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         showMicHelp();
       } else if (e.error === 'no-speech') {
@@ -488,11 +489,21 @@ function wireEmergency() {
         toast('No microphone found on this device — type instead');
       } else if (e.error === 'network') {
         toast('Voice input needs an internet connection right now — type instead');
+      } else if (e.error === 'aborted') {
+        // Recognition was stopped/interrupted (e.g. a second tap while still
+        // listening) — not a real failure, so don't alarm the user at all.
       } else {
-        toast('Mic unavailable — type instead');
+        toast(`Mic unavailable (${e.error || 'unknown'}) — type instead`);
       }
     };
-    rec.start();
+    try {
+      rec.start();
+    } catch (err) {
+      $('btnMic').classList.remove('listening');
+      $('micLabel').textContent = 'TAP TO SPEAK';
+      console.warn('[GoldenBay] rec.start() threw:', err);
+      toast('Mic unavailable — type instead');
+    }
   };
 
   function showMicHelp() {
