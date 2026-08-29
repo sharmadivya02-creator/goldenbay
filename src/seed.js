@@ -49,6 +49,23 @@ const HOSPITALS = [
   },
 ];
 
+// Generates a plain, schematic placeholder "photo" for a document — a flat
+// card with a title and a few blank lines. Deliberately generic (no real
+// logos or layouts copied from any real institution's actual paperwork) so
+// the demo can show the "tap Insurance / Medicines to see the photo" feature
+// without needing the presenter to snap a real photo first.
+function demoDoc(id, category, title, subtitle, bg, fg) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="380">
+    <rect width="600" height="380" rx="18" fill="${bg}"/>
+    <rect x="24" y="24" width="552" height="332" rx="12" fill="none" stroke="${fg}" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="6 8"/>
+    <text x="48" y="90" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="${fg}">${title}</text>
+    <text x="48" y="122" font-family="Arial, sans-serif" font-size="16" fill="${fg}" fill-opacity="0.75">${subtitle}</text>
+    ${[1, 2, 3, 4].map((i) => `<rect x="48" y="${150 + i * 34}" width="${i % 2 ? 420 : 320}" height="10" rx="5" fill="${fg}" fill-opacity="0.18"/>`).join('')}
+    <text x="48" y="352" font-family="Arial, sans-serif" font-size="12" fill="${fg}" fill-opacity="0.5">SYNTHETIC DEMO DOCUMENT — not a real record</text>
+  </svg>`;
+  return { id, category, name: title, mimeType: 'image/svg+xml', dataUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent(svg) };
+}
+
 // The demo family — deliberately the same four people GoldenBay's design
 // reference uses, so a live demo matches the pitch deck exactly.
 const DEMO_FAMILY = [
@@ -64,6 +81,11 @@ const DEMO_FAMILY = [
     insurance: 'Star Health',
     preferredHospital: 'Apex Hospital',
     emergencyContacts: [{ name: 'Aisha (Wife)', phone: '+91-90000-00001' }],
+    documents: [
+      demoDoc('doc-demo-1', 'insurance', 'Policy card (DEMO)', 'Star Health · Member ID DEMO-8821', '#eaf1fb', '#3a6fb0'),
+      demoDoc('doc-demo-2', 'prescription', 'Prescription (DEMO)', 'Statins + Ace inhibitors — daily', '#fbe9ec', '#7c0d20'),
+      demoDoc('doc-demo-3', 'report', 'Lab report (DEMO)', 'Fasting glucose panel, June 2026', '#fbf1de', '#96701c'),
+    ],
     isDemo: true,
   },
   {

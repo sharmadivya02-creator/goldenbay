@@ -68,6 +68,15 @@
       <button class="primary" id="btnStartEmergencyFor" style="width:100%;padding:14px;font-size:15px">🚨 Start emergency for this person</button>
     </section>
 
+    <!-- ============ ROW DETAIL (allergies / meds / history / contact / hospital / insurance) ============ -->
+    <section class="screen hidden" id="screen-rowdetail">
+      <div class="topbar-nav">
+        <button class="icon-btn" id="btnRowBack"></button>
+        <div class="title" id="rowTitle">Detail</div>
+      </div>
+      <div id="rowBody"></div>
+    </section>
+
     <!-- ============ EMERGENCY ============ -->
     <section class="screen hidden" id="screen-emergency" style="padding-top:0">
       <div class="emg-screen" id="emgScreen">
@@ -197,11 +206,26 @@
     <input id="pfHospital" placeholder="e.g. Apex Hospital" />
     <label>Insurance</label>
     <input id="pfInsurance" placeholder="e.g. Star Health" />
+
+    <h2 style="margin-top:18px;font-size:14px">Documents (optional)</h2>
+    <p class="muted">Photograph the real documents — these show up under the matching tab on the profile page.</p>
+    <label>📇 Insurance card / policy papers</label>
+    <input type="file" id="docInsurance" accept="image/*" multiple />
+    <label>💊 Prescription photos</label>
+    <input type="file" id="docPrescription" accept="image/*" multiple />
+    <label>📋 Medical reports / test results</label>
+    <input type="file" id="docReport" accept="image/*" multiple />
     <p class="muted">You review everything the AI drafted before saving — the AI only drafts, humans confirm.</p>
     <div class="row" style="margin-top:12px">
       <button class="ghost" id="btnSheetCancel">Cancel</button>
       <button class="primary" id="btnSaveProfile">Save profile</button>
     </div>
+  </div>
+
+  <!-- ============ PHOTO LIGHTBOX ============ -->
+  <div class="lightbox hidden" id="lightbox">
+    <button class="icon-btn" id="btnLightboxClose"></button>
+    <img id="lightboxImg" alt="Document" />
   </div>
 
   <script src="/socket.io/socket.io.js"></script>

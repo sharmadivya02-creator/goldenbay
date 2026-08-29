@@ -37,6 +37,8 @@ function paintIcons() {
   $('homeSosChev').innerHTML = icon('chevronRight', { size: 20 });
   $('addMemberIcon').innerHTML = icon('plus', { size: 17 });
   $('btnDetailBack').innerHTML = icon('arrowLeft', { size: 18 });
+  $('btnRowBack').innerHTML = icon('arrowLeft', { size: 18 });
+  $('btnLightboxClose').innerHTML = icon('x', { size: 20 });
   $('emgBell').innerHTML = icon('bell', { size: 17 });
   $('emgWarnIcon').innerHTML = icon('alertTriangle', { size: 18 });
   $('micIcon').innerHTML = icon('mic', { size: 28 });
@@ -105,16 +107,19 @@ function wireTabs() {
   $('btnDetailBack').onclick = () => goTab('profiles');
   $('btnEmgPickProfile').onclick = () => goTab('profiles');
   $('btnEmgSwap').onclick = () => goTab('profiles');
+  $('btnRowBack').onclick = () => goTab('detail');
+  $('btnLightboxClose').onclick = () => $('lightbox').classList.add('hidden');
+  $('lightbox').onclick = (e) => { if (e.target.id === 'lightbox') $('lightbox').classList.add('hidden'); };
 }
 
 function goTab(tab, opts = {}) {
   activeTab = tab;
-  ['home', 'profiles', 'detail', 'emergency', 'more'].forEach((t) => {
+  ['home', 'profiles', 'detail', 'rowdetail', 'emergency', 'more'].forEach((t) => {
     $('screen-' + t)?.classList.toggle('hidden', t !== tab);
   });
   document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-  // the tab bar has no "detail" entry — keep Profiles highlighted while viewing a person
-  if (tab === 'detail') document.querySelector('.tab-btn[data-tab="profiles"]').classList.add('active');
+  // the tab bar has no "detail"/"rowdetail" entry — keep Profiles highlighted while viewing a person
+  if (tab === 'detail' || tab === 'rowdetail') document.querySelector('.tab-btn[data-tab="profiles"]').classList.add('active');
   if (tab !== 'emergency') $('topbar').classList.remove('hidden');
   if (tab === 'home') renderHome();
   if (tab === 'profiles') renderProfilesList();
@@ -192,18 +197,22 @@ function openDetail(id) {
   const history = [...(p.conditions || []), ...(p.pastEvents || [])];
   const contact = (p.emergencyContacts || [])[0];
   const rows = [
-    { icon: 'alertTriangle', tone: 'red', label: 'Allergies', value: (p.allergies || []).length ? p.allergies.join(', ') : 'None recorded' },
-    { icon: 'pill', tone: 'blue', label: 'Medicines', value: (p.medications || []).length ? p.medications.join(', ') : 'None recorded' },
-    { icon: 'clock', tone: 'amber', label: 'History', value: history.length ? history.join(', ') : 'None recorded' },
-    { icon: 'phone', tone: 'green', label: 'Contact', value: contact ? `${contact.name}${contact.phone ? ' · ' + contact.phone : ''}` : 'Not set' },
-    { icon: 'hospital', tone: 'red', label: 'Hospital', value: p.preferredHospital || 'Not set' },
-    { icon: 'shield', tone: 'blue', label: 'Insurance', value: p.insurance || 'Not set' },
+    { type: 'allergies', icon: 'alertTriangle', tone: 'red', label: 'Allergies', value: (p.allergies || []).length ? p.allergies.join(', ') : 'None recorded' },
+    { type: 'medicines', icon: 'pill', tone: 'blue', label: 'Medicines', value: (p.medications || []).length ? p.medications.join(', ') : 'None recorded' },
+    { type: 'history', icon: 'clock', tone: 'amber', label: 'History', value: history.length ? history.join(', ') : 'None recorded' },
+    { type: 'contact', icon: 'phone', tone: 'green', label: 'Contact', value: contact ? `${contact.name}${contact.phone ? ' · ' + contact.phone : ''}` : 'Not set' },
+    { type: 'hospital', icon: 'hospital', tone: 'red', label: 'Hospital', value: p.preferredHospital || 'Not set' },
+    { type: 'insurance', icon: 'shield', tone: 'blue', label: 'Insurance', value: p.insurance || 'Not set' },
   ];
   $('detailList').innerHTML = rows.map((r) => `
-    <div class="drow">
+    <button class="drow tappable" data-row="${r.type}">
       <div class="ic ${r.tone}">${icon(r.icon, { size: 17 })}</div>
       <div class="body"><div class="label">${r.label}</div><div class="value ${r.value.startsWith('None') || r.value.startsWith('Not') ? 'plain' : ''}">${esc(r.value)}</div></div>
-    </div>`).join('');
+      <span class="chev">${icon('chevronRight', { size: 17 })}</span>
+    </button>`).join('');
+  $('detailList').querySelectorAll('.drow[data-row]').forEach((btn) => {
+    btn.onclick = () => openRowDetail(btn.dataset.row, p);
+  });
 
   $('btnStartEmergencyFor').onclick = () => {
     activeProfileId = p.id;
@@ -212,6 +221,91 @@ function openDetail(id) {
   };
 
   goTab('detail');
+}
+
+// ---------------------------------------------------------------------------
+// Row detail — tapping Allergies / Medicines / History / Contact / Hospital /
+// Insurance opens this with the full list + any matching uploaded documents.
+// ---------------------------------------------------------------------------
+const ROW_META = {
+  allergies:  { title: 'Allergies',  icon: 'alertTriangle', tone: 'red',   docCategory: null },
+  medicines:  { title: 'Medicines',  icon: 'pill',           tone: 'blue',  docCategory: 'prescription' },
+  history:    { title: 'History',    icon: 'clock',          tone: 'amber', docCategory: 'report' },
+  contact:    { title: 'Contact',    icon: 'phone',          tone: 'green', docCategory: null },
+  hospital:   { title: 'Hospital',   icon: 'hospital',       tone: 'red',   docCategory: null },
+  insurance:  { title: 'Insurance',  icon: 'shield',         tone: 'blue',  docCategory: 'insurance' },
+};
+
+function docGalleryHTML(docs, emptyHint) {
+  if (!docs || !docs.length) {
+    return `<div class="doc-empty">${icon('camera', { size: 22 })}<span>${esc(emptyHint)}</span></div>`;
+  }
+  return `<div class="doc-grid">${docs.map((d) => `
+    <button class="doc-thumb" data-doc="${d.id}"><img src="${d.dataUrl}" alt="${esc(d.name || 'document')}" /></button>
+  `).join('')}</div>`;
+}
+
+function openRowDetail(type, p) {
+  const meta = ROW_META[type];
+  $('rowTitle').textContent = meta.title;
+  const docs = (p.documents || []).filter((d) => d.category === meta.docCategory);
+
+  let body = `<div class="row-hero"><div class="ic-lg ${meta.tone === 'red' ? 'drow' : ''}" style="background:${
+    meta.tone === 'red' ? 'var(--red-soft)' : meta.tone === 'blue' ? 'var(--blue-soft)' : meta.tone === 'green' ? 'var(--green-soft)' : 'var(--amber-soft)'
+  };color:${meta.tone === 'red' ? 'var(--red-dark)' : meta.tone === 'blue' ? 'var(--blue)' : meta.tone === 'green' ? 'var(--green)' : '#96701c'}">${icon(meta.icon, { size: 26 })}</div>
+  <h2>${esc(p.fullName)}</h2><p>${meta.title}</p></div>`;
+
+  if (type === 'allergies') {
+    const items = p.allergies || [];
+    body += items.length
+      ? `<ul class="row-list">${items.map((a) => `<li class="row-item"><span class="dot"></span>${esc(a)}</li>`).join('')}</ul>`
+      : `<p class="muted" style="text-align:center">No allergies recorded.</p>`;
+  } else if (type === 'medicines') {
+    const items = p.medications || [];
+    body += items.length
+      ? `<ul class="row-list">${items.map((m) => `<li class="row-item"><span class="dot"></span>${esc(m)}</li>`).join('')}</ul>`
+      : `<p class="muted" style="text-align:center">No medicines recorded.</p>`;
+    body += `<h3 style="margin-top:18px">Prescription photos</h3>${docGalleryHTML(docs, 'No prescription photos added yet — add them from the profile’s edit form.')}`;
+  } else if (type === 'history') {
+    const items = [...(p.conditions || []), ...(p.pastEvents || [])];
+    body += items.length
+      ? `<ul class="row-list">${items.map((h) => `<li class="row-item"><span class="dot"></span>${esc(h)}</li>`).join('')}</ul>`
+      : `<p class="muted" style="text-align:center">No history recorded.</p>`;
+    body += `<h3 style="margin-top:18px">Medical reports</h3>${docGalleryHTML(docs, 'No report photos added yet.')}`;
+  } else if (type === 'contact') {
+    const c = (p.emergencyContacts || [])[0];
+    if (c) {
+      body += `<p class="muted" style="text-align:center;margin-bottom:14px">${esc(c.name)}${c.phone ? ' · ' + esc(c.phone) : ''}</p>`;
+      if (c.phone) {
+        body += `<a class="call-btn" href="tel:${esc(c.phone.replace(/[^+\d]/g, ''))}">${icon('phone', { size: 18 })} Call ${esc(c.name.split(' ')[0])}</a>`;
+      }
+    } else {
+      body += `<p class="muted" style="text-align:center">No emergency contact on file.</p>`;
+    }
+  } else if (type === 'hospital') {
+    if (p.preferredHospital) {
+      body += `<p class="muted" style="text-align:center;margin-bottom:14px">Preferred hospital for ${esc(p.fullName.split(' ')[0])}</p>`;
+      body += `<a class="map-btn" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.preferredHospital)}" target="_blank" rel="noopener">${icon('mapPin', { size: 18 })} Open ${esc(p.preferredHospital)} in Maps</a>`;
+    } else {
+      body += `<p class="muted" style="text-align:center">No preferred hospital on file — GoldenBay will still auto-match the right one during a real emergency.</p>`;
+    }
+  } else if (type === 'insurance') {
+    body += `<p class="muted" style="text-align:center;margin-bottom:4px">${p.insurance ? esc(p.insurance) : 'No insurer on file'}</p>`;
+    body += `<h3 style="margin-top:14px">Policy documents</h3>${docGalleryHTML(docs, 'No insurance card / policy photos added yet.')}`;
+  }
+
+  $('rowBody').innerHTML = body;
+  $('rowBody').querySelectorAll('.doc-thumb[data-doc]').forEach((btn) => {
+    const doc = (p.documents || []).find((d) => d.id === btn.dataset.doc);
+    if (doc) btn.onclick = () => openLightbox(doc.dataUrl);
+  });
+
+  goTab('rowdetail');
+}
+
+function openLightbox(dataUrl) {
+  $('lightboxImg').src = dataUrl;
+  $('lightbox').classList.remove('hidden');
 }
 
 // ---------------------------------------------------------------------------
@@ -260,7 +354,13 @@ function wireSheet() {
     if (!name) return toast('Name is required');
     const contactRaw = $('pfContact').value.trim();
     const [cName, cPhone] = contactRaw.split(',').map((s) => s?.trim());
+    $('btnSaveProfile').disabled = true;
     try {
+      const documents = [
+        ...(await filesToDocuments($('docInsurance').files, 'insurance')),
+        ...(await filesToDocuments($('docPrescription').files, 'prescription')),
+        ...(await filesToDocuments($('docReport').files, 'report')),
+      ];
       const { profile } = await api('POST', '/v1/profiles', {
         fullName: name,
         relation: $('pfRelation').value,
@@ -272,19 +372,40 @@ function wireSheet() {
         emergencyContacts: contactRaw ? [{ name: cName || contactRaw, phone: cPhone || '' }] : [],
         preferredHospital: $('pfHospital').value.trim() || null,
         insurance: $('pfInsurance').value.trim() || null,
+        documents,
       });
       await loadProfiles();
       activeProfileId = profile.id;
       localStorage.setItem('gb_activeProfileId', profile.id);
       close();
       ['pfName','pfAge','pfBlood','pfAllergies','pfMeds','pfConditions','pfContact','pfHospital','pfInsurance'].forEach((id) => $(id).value = '');
+      ['docInsurance','docPrescription','docReport','rxPhoto'].forEach((id) => $(id).value = '');
       $('draftStatus').textContent = '';
       toast('Profile saved ✔');
       goTab('profiles');
     } catch (err) {
       toast('Save failed: ' + err.message);
     }
+    $('btnSaveProfile').disabled = false;
   };
+}
+
+// Reads a FileList into [{ id, category, name, mimeType, dataUrl }], skipping
+// anything that isn't an image (documents are shown as photo thumbnails).
+async function filesToDocuments(fileList, category) {
+  const files = Array.from(fileList || []).filter((f) => f.type.startsWith('image/'));
+  return Promise.all(files.map((file) => new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve({
+      id: 'doc-' + Math.random().toString(36).slice(2, 10),
+      category,
+      name: file.name,
+      mimeType: file.type,
+      dataUrl: r.result,
+    });
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  })));
 }
 
 // ---------------------------------------------------------------------------

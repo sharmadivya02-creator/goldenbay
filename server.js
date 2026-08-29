@@ -74,6 +74,7 @@ app.post('/v1/profiles', (req, res) => {
     insurance: p.insurance || null,
     preferredHospital: p.preferredHospital || null,
     emergencyContacts: p.emergencyContacts || [],
+    documents: Array.isArray(p.documents) ? p.documents.slice(0, 24) : [],
   });
   res.status(201).json({ profile });
 });
