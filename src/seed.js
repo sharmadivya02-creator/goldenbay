@@ -70,6 +70,7 @@ function demoDoc(id, category, title, subtitle, bg, fg) {
 // reference uses, so a live demo matches the pitch deck exactly.
 const DEMO_FAMILY = [
   {
+    id: 'demo-rajesh',
     fullName: 'Rajesh Sharma (DEMO)',
     relation: 'Husband',
     age: 55,
@@ -89,6 +90,7 @@ const DEMO_FAMILY = [
     isDemo: true,
   },
   {
+    id: 'demo-aisha',
     fullName: 'Aisha Sharma (DEMO)',
     relation: 'Wife',
     age: 51,
@@ -108,6 +110,7 @@ const DEMO_FAMILY = [
     isDemo: true,
   },
   {
+    id: 'demo-mridula',
     fullName: 'Mridula Sharma (DEMO)',
     relation: 'Mother',
     age: 79,
@@ -127,6 +130,7 @@ const DEMO_FAMILY = [
     isDemo: true,
   },
   {
+    id: 'demo-rohan',
     fullName: 'Rohan Sharma (DEMO)',
     relation: 'Son',
     age: 8,
@@ -155,11 +159,25 @@ function seed() {
     );
     console.log(`[seed] loaded ${HOSPITALS.length} fictional hospitals`);
   }
-  const hasDemoProfiles = store.all('profiles').some((p) => p.isDemo);
-  if (!hasDemoProfiles) {
-    DEMO_FAMILY.forEach((p) => store.insert('profiles', p));
-    console.log(`[seed] loaded demo family (${DEMO_FAMILY.length} profiles)`);
+  // Demo profiles now carry stable ids (demo-rajesh, demo-aisha, ...) instead
+  // of random ones. That means every boot can SYNC them to whatever's
+  // currently written above — so editing this file and redeploying always
+  // shows up live, instead of silently no-op'ing because "some demo profile
+  // already exists" (which is what happened before: Rohan's medicines stayed
+  // "None recorded" on the live site even after the seed data was fixed,
+  // because the already-stored record was never touched again).
+  const fixedIds = new Set(DEMO_FAMILY.map((p) => p.id));
+  // Also drop any leftover demo profiles from before this fix (they had
+  // random ids), so upgrading doesn't leave stale duplicate family members.
+  const withoutStaleDemo = store.all('profiles').filter((p) => !p.isDemo || fixedIds.has(p.id));
+  if (withoutStaleDemo.length !== store.all('profiles').length) {
+    store.setAll('profiles', withoutStaleDemo);
   }
+  DEMO_FAMILY.forEach((p) => {
+    if (store.find('profiles', p.id)) store.update('profiles', p.id, p);
+    else store.insert('profiles', p);
+  });
+  console.log(`[seed] synced demo family (${DEMO_FAMILY.length} profiles)`);
 }
 
 module.exports = { seed, DEMO_CENTER };

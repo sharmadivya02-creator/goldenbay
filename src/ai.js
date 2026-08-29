@@ -165,4 +165,65 @@ async function composeClinicalPicture(description, profile) {
   return mockClinicalPicture(description, profile);
 }
 
-module.exports = { draftProfileFromImage, composeClinicalPicture, geminiEnabled };
+// ---------------------------------------------------------------------------
+// 3) Profile → plain-language medical summary (shown under the profile's
+//    "Medical summary" tab, next to Insurance — a fast, readable overview
+//    for anyone (family, a new doctor, an insurer) who needs the picture
+//    without reading every individual field).
+// ---------------------------------------------------------------------------
+
+const SUMMARY_PROMPT = (profile) => `You are the information organiser for GoldenBay, a family medical-preparedness app.
+Turn this person's stored health profile into a short, plain-language medical summary — the kind a family member could read aloud to a new doctor, or attach when filing an insurance claim. You must NOT diagnose, predict, or recommend treatment — only organise what's already recorded.
+
+Patient profile (JSON): ${JSON.stringify(profile)}
+
+Return JSON exactly in this shape:
+{
+  "summary": string,          // 3-5 plain sentences: who they are, key conditions, what matters most for their care
+  "keyPoints": string[],      // short, scannable highlights — allergies first, then critical medications/conditions
+  "insuranceNote": string     // one sentence: insurer + preferred hospital, phrased for a claims or admissions desk
+}`;
+
+function mockProfileSummary(profile) {
+  const name = profile?.fullName || 'This person';
+  const first = name.split(' ')[0];
+  const age = profile?.age != null ? `, age ${profile.age}` : '';
+  const bg = profile?.bloodGroup ? ` Blood group ${profile.bloodGroup}.` : '';
+  const allergies = profile?.allergies || [];
+  const meds = profile?.medications || [];
+  const conditions = profile?.conditions || [];
+  const pastEvents = profile?.pastEvents || [];
+
+  const summary =
+    `${name}${age}.${bg} ` +
+    (conditions.length ? `Ongoing conditions: ${conditions.join(', ')}. ` : 'No ongoing conditions recorded. ') +
+    (meds.length ? `Currently takes ${meds.join('; ')}. ` : 'No regular medications on file. ') +
+    (allergies.length ? `Known allergies: ${allergies.join(', ')} — flag before any new medication or contrast dye.` : 'No known allergies on file.');
+
+  const keyPoints = [
+    ...allergies.map((a) => `ALLERGY — ${a}`),
+    ...meds.map((m) => `Medication — ${m}`),
+    ...conditions.map((c) => `Condition — ${c}`),
+    ...pastEvents.map((e) => `Past event — ${e}`),
+  ];
+
+  const insuranceNote = profile?.insurance
+    ? `Insured with ${profile.insurance}${profile.preferredHospital ? `; prefers ${profile.preferredHospital} for admission` : ''} — verify policy details directly with the insurer before relying on this for a claim.`
+    : `No insurer on file for ${first} — confirm coverage separately before admission.`;
+
+  return { summary, keyPoints, insuranceNote, _source: 'mock' };
+}
+
+async function summarizeProfile(profile) {
+  if (geminiEnabled()) {
+    try {
+      const result = await callGemini([{ text: SUMMARY_PROMPT(profile) }]);
+      return { ...result, _source: 'gemini' };
+    } catch (err) {
+      console.error('[ai] Gemini profile summary failed, using mock:', err.message);
+    }
+  }
+  return mockProfileSummary(profile);
+}
+
+module.exports = { draftProfileFromImage, composeClinicalPicture, summarizeProfile, geminiEnabled };

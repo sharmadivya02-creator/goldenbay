@@ -24,6 +24,8 @@
   --blue: #3a6fb0;
   --blue-soft: #eaf1fb;
   --amber-soft: #fbf1de;
+  --violet: #6a4fb0;
+  --violet-soft: #efeafb;
 
   --radius-lg: 20px;
   --radius-md: 14px;
@@ -248,6 +250,7 @@ ul.plain { margin: 6px 0; padding-left: 18px; font-size: 14px; }
 .drow .ic.blue { background: var(--blue-soft); color: var(--blue); }
 .drow .ic.green { background: var(--green-soft); color: var(--green); }
 .drow .ic.amber { background: var(--amber-soft); color: #96701c; }
+.drow .ic.violet { background: var(--violet-soft); color: var(--violet); }
 .drow .body { flex: 1; min-width: 0; }
 .drow .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 800; }
 .drow .value { font-size: 14.5px; margin-top: 2px; font-weight: 600; word-wrap: break-word; }

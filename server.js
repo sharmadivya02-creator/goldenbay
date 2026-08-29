@@ -96,6 +96,17 @@ app.post('/v1/profiles/draft-from-image', async (req, res) => {
   res.json({ draft });
 });
 
+// AI-generated plain-language medical summary for one profile — shown under
+// the profile's "Medical summary" tab. Not cached server-side (cheap mock
+// fallback, and Gemini calls are fast) so it always reflects the latest
+// profile data; the frontend caches it in memory per screen visit.
+app.get('/v1/profiles/:id/summary', async (req, res) => {
+  const profile = store.find('profiles', req.params.id);
+  if (!profile) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'profile not found' } });
+  const summary = await ai.summarizeProfile(profile);
+  res.json({ summary });
+});
+
 app.get('/v1/emergencies', (_req, res) => {
   const emergencies = store
     .all('emergencies')
