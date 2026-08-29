@@ -390,6 +390,43 @@ ul.plain { margin: 6px 0; padding-left: 18px; font-size: 14px; }
 .mic { width: 46px; flex: none; font-size: 19px; }
 .mic.listening { background: var(--red); color: #fff; }
 
-@media (min-width: 480px) {
-  .tabbar, .shell { box-shadow: 0 0 0 1px var(--border); }
+/* On a wide desktop viewport, the mobile-shaped app would otherwise float in
+   a sea of empty background. Dress the surrounding space so it reads as "a
+   phone app shown in a frame" rather than "a page that didn't fill the
+   screen": a soft branded backdrop, and the app itself gets real edges. */
+@media (min-width: 620px) {
+  html, body { background: radial-gradient(120% 100% at 50% 0%, #fbeef0 0%, #f6f0ea 45%, #efe6dc 100%); }
+  body::before {
+    content: "";
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(600px 400px at 12% 15%, rgba(179,18,44,0.07), transparent 60%),
+      radial-gradient(500px 380px at 88% 85%, rgba(58,111,176,0.07), transparent 60%);
+  }
+  /* The tab bar is normally position:fixed to the viewport (correct for a
+     real phone). On desktop it lives inside the framed .shell instead, and
+     needs to stay pinned to the BOTTOM OF THE FRAME even when a screen's
+     content is shorter than the frame — a flex column does that: the active
+     screen grows to fill the space and scrolls internally, the tab bar stays
+     as the last, always-visible flex item. */
+  .shell {
+    position: relative; z-index: 1;
+    margin: 28px auto;
+    height: calc(100vh - 56px);
+    padding-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 34px;
+    border: 10px solid #17130f;
+    box-shadow: 0 30px 70px -25px rgba(20,14,10,0.45), 0 0 0 1px rgba(20,14,10,0.06);
+  }
+  .topbar, .demo-strip, .tabbar { flex: 0 0 auto; }
+  .screen:not(.hidden) { flex: 1 1 auto; overflow-y: auto; }
+  .tabbar {
+    position: static;
+    left: auto; transform: none;
+    width: 100%; max-width: none;
+    border-radius: 0 0 24px 24px;
+  }
 }
