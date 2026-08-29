@@ -64,6 +64,7 @@ app.post('/v1/profiles', (req, res) => {
   }
   const profile = store.insert('profiles', {
     fullName: p.fullName.trim(),
+    relation: p.relation || null,
     age: Number.isFinite(+p.age) ? +p.age : null,
     bloodGroup: p.bloodGroup || null,
     allergies: p.allergies || [],
@@ -71,6 +72,7 @@ app.post('/v1/profiles', (req, res) => {
     conditions: p.conditions || [],
     pastEvents: p.pastEvents || [],
     insurance: p.insurance || null,
+    preferredHospital: p.preferredHospital || null,
     emergencyContacts: p.emergencyContacts || [],
   });
   res.status(201).json({ profile });

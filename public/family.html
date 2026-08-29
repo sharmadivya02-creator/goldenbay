@@ -11,7 +11,7 @@
   <div class="wrap">
     <div class="demo-banner">⚠️ DEMO — synthetic data. In this view, a family member follows a loved one's emergency live.</div>
     <header class="app">
-      <div class="logo">👪</div>
+      <div class="logo" id="logoIcon"></div>
       <div>
         <h1>Family view</h1>
         <p class="sub">You were notified because you're an emergency contact</p>
@@ -42,7 +42,9 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="icons.js"></script>
   <script src="shared.js"></script>
   <script src="family.js"></script>
+  <script>document.getElementById('logoIcon').innerHTML = icon('users', { size: 19 });</script>
 </body>
 </html>

@@ -49,22 +49,66 @@ const HOSPITALS = [
   },
 ];
 
-const DEMO_PROFILE = {
-  fullName: 'Ramesh Kumar (DEMO)',
-  age: 62,
-  bloodGroup: 'B+',
-  allergies: ['Penicillin'],
-  medications: ['Metformin 500mg (twice daily)', 'Telmisartan 40mg (morning)'],
-  conditions: ['Type 2 Diabetes (since 2014)', 'Hypertension'],
-  pastEvents: ['Angioplasty, 2021'],
-  insurance: 'DemoCare Health — Policy #DEMO-4821',
-  preferredHospital: 'Lotus Heart Centre',
-  emergencyContacts: [
-    { name: 'Priya Kumar (daughter)', phone: '+91-90000-00001' },
-    { name: 'Amit Kumar (son)', phone: '+91-90000-00002' },
-  ],
-  isDemo: true,
-};
+// The demo family — deliberately the same four people GoldenBay's design
+// reference uses, so a live demo matches the pitch deck exactly.
+const DEMO_FAMILY = [
+  {
+    fullName: 'Rajesh Sharma (DEMO)',
+    relation: 'Husband',
+    age: 55,
+    bloodGroup: 'B+',
+    allergies: ['Sulfa drugs', 'Shellfish'],
+    medications: ['Statins — daily', 'Ace inhibitors — daily'],
+    conditions: ['Hypertension', 'Pre-diabetes'],
+    pastEvents: [],
+    insurance: 'Star Health',
+    preferredHospital: 'Apex Hospital',
+    emergencyContacts: [{ name: 'Aisha (Wife)', phone: '+91-90000-00001' }],
+    isDemo: true,
+  },
+  {
+    fullName: 'Aisha Sharma (DEMO)',
+    relation: 'Wife',
+    age: 51,
+    bloodGroup: 'O+',
+    allergies: ['Penicillin'],
+    medications: [],
+    conditions: [],
+    pastEvents: [],
+    insurance: 'Star Health',
+    preferredHospital: 'Apex Hospital',
+    emergencyContacts: [{ name: 'Rajesh (Husband)', phone: '+91-90000-00002' }],
+    isDemo: true,
+  },
+  {
+    fullName: 'Mridula Sharma (DEMO)',
+    relation: 'Mother',
+    age: 79,
+    bloodGroup: 'A+',
+    allergies: [],
+    medications: ['Calcium supplement — daily'],
+    conditions: ['Osteoporosis', 'Mild hearing loss'],
+    pastEvents: ['Hip fracture, 2022'],
+    insurance: 'Star Health',
+    preferredHospital: 'Apex Hospital',
+    emergencyContacts: [{ name: 'Rajesh (Son)', phone: '+91-90000-00002' }],
+    isDemo: true,
+  },
+  {
+    fullName: 'Rohan Sharma (DEMO)',
+    relation: 'Son',
+    age: 8,
+    bloodGroup: 'B+',
+    allergies: ['Peanuts'],
+    medications: [],
+    conditions: ['Mild asthma'],
+    pastEvents: [],
+    insurance: 'Star Health',
+    preferredHospital: "Greenfield Children's Hospital",
+    emergencyContacts: [{ name: 'Aisha (Mother)', phone: '+91-90000-00001' }],
+    isDemo: true,
+  },
+];
 
 function seed() {
   if (store.all('hospitals').length === 0) {
@@ -74,10 +118,10 @@ function seed() {
     );
     console.log(`[seed] loaded ${HOSPITALS.length} fictional hospitals`);
   }
-  const hasDemoProfile = store.all('profiles').some((p) => p.isDemo);
-  if (!hasDemoProfile) {
-    store.insert('profiles', DEMO_PROFILE);
-    console.log('[seed] loaded demo patient profile (Ramesh Kumar)');
+  const hasDemoProfiles = store.all('profiles').some((p) => p.isDemo);
+  if (!hasDemoProfiles) {
+    DEMO_FAMILY.forEach((p) => store.insert('profiles', p));
+    console.log(`[seed] loaded demo family (${DEMO_FAMILY.length} profiles)`);
   }
 }
 

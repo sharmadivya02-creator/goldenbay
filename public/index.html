@@ -2,105 +2,211 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>GoldenBay — Emergency</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+  <title>GoldenBay — Family Emergency</title>
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
-  <div class="wrap">
-    <div class="demo-banner">⚠️ DEMO with synthetic data — not a real emergency service. In a real emergency in India, call <b>112</b> (or 108 for an ambulance).</div>
+  <div class="shell" id="shell">
 
-    <header class="app">
-      <div class="logo">🌊</div>
-      <div>
+    <!-- ============ TOP BAR ============ -->
+    <div class="topbar" id="topbar">
+      <div class="mark" id="brandMark"></div>
+      <div class="titles">
         <h1>GoldenBay</h1>
-        <p class="sub">Right hospital. Already prepared.</p>
+        <p>Right hospital. Already prepared.</p>
       </div>
-      <span class="ai-badge" id="aiBadge">…</span>
-    </header>
+      <span class="ai-pill" id="aiBadge">…</span>
+    </div>
+    <div class="demo-strip">⚠️ Demo with synthetic data — not a real emergency service. In a real emergency in India, call <b>112</b> (or 108 for an ambulance).</div>
 
-    <!-- ============ PROFILE ============ -->
-    <div class="card" id="profileCard">
-      <h2>Health profile</h2>
-      <label>Who is this emergency for?</label>
-      <select id="profileSelect"></select>
-      <div class="row" style="margin-top:10px">
-        <button id="btnNewProfile" class="ghost">+ New profile</button>
+    <!-- ============ HOME ============ -->
+    <section class="screen" id="screen-home">
+      <div class="greeting">
+        <div class="hi" id="greetHi">Hello 👋</div>
+        <div class="date" id="greetDate"></div>
       </div>
 
-      <div id="profileForm" class="hidden">
-        <h3>New profile — AI can draft it from a prescription photo</h3>
-        <label>📷 Prescription / medical report photo (optional)</label>
-        <input type="file" id="rxPhoto" accept="image/*" />
-        <button id="btnDraft" style="margin-top:8px">✦ Draft profile with AI</button>
-        <p class="muted" id="draftStatus"></p>
+      <button class="home-sos" id="btnHomeSos">
+        <span class="ring" id="homeSosIcon"></span>
+        <span style="flex:1">
+          <strong>Emergency SOS</strong>
+          <span>One tap → your family's medical profile goes with you</span>
+        </span>
+        <span class="go" id="homeSosChev"></span>
+      </button>
 
-        <label>Full name *</label>
-        <input id="pfName" placeholder="e.g. Sunita Sharma" />
-        <div class="row">
-          <div><label>Age</label><input id="pfAge" type="number" min="0" max="120" /></div>
-          <div><label>Blood group</label><input id="pfBlood" placeholder="e.g. O+" /></div>
+      <div class="section-head"><h2>Active profile</h2><button class="link" id="btnHomeSwap">Switch</button></div>
+      <div class="card active-card" id="homeActiveCard"></div>
+
+      <div class="section-head"><h2>Family</h2><a href="#" id="btnHomeSeeAll">See all</a></div>
+      <div class="plist" id="homeFamilyList"></div>
+    </section>
+
+    <!-- ============ PROFILES (list) ============ -->
+    <section class="screen hidden" id="screen-profiles">
+      <div class="section-head" style="margin-top:2px"><h2>Family profiles</h2></div>
+      <div class="plist" id="profilesList"></div>
+      <button class="add-row" id="btnAddMember"><span id="addMemberIcon"></span> Add family member</button>
+    </section>
+
+    <!-- ============ PROFILE DETAIL ============ -->
+    <section class="screen hidden" id="screen-detail">
+      <div class="topbar-nav">
+        <button class="icon-btn" id="btnDetailBack"></button>
+        <div class="title" id="detailTopTitle">Profile</div>
+      </div>
+      <div class="detail-head">
+        <div class="avatar lg" id="detailAvatar"></div>
+        <div class="info">
+          <h1 id="detailName">—</h1>
+          <p id="detailSub">—</p>
         </div>
-        <label>Allergies (comma separated)</label>
-        <input id="pfAllergies" placeholder="e.g. Penicillin" />
-        <label>Current medications (comma separated)</label>
-        <input id="pfMeds" placeholder="e.g. Metformin 500mg twice daily" />
-        <label>Known conditions (comma separated)</label>
-        <input id="pfConditions" placeholder="e.g. Diabetes, Hypertension" />
-        <label>Emergency contact (name, phone)</label>
-        <input id="pfContact" placeholder="e.g. Priya Sharma, +91-9xxxxxxxxx" />
-        <p class="muted">You review everything the AI drafted before saving — the AI only drafts, humans confirm.</p>
-        <button id="btnSaveProfile" class="primary" style="margin-top:10px">Save profile</button>
       </div>
-    </div>
+      <div class="dlist" id="detailList"></div>
+      <button class="primary" id="btnStartEmergencyFor" style="width:100%;padding:14px;font-size:15px">🚨 Start emergency for this person</button>
+    </section>
 
-    <!-- ============ EMERGENCY BUTTON ============ -->
-    <div class="card" id="sosCard">
-      <div class="sos-zone">
-        <button class="sos" id="btnSos">SOS<small>tap for emergency</small></button>
-        <p class="sos-hint">One tap → GPS captured → describe in your own words</p>
+    <!-- ============ EMERGENCY ============ -->
+    <section class="screen hidden" id="screen-emergency" style="padding-top:0">
+      <div class="emg-screen" id="emgScreen">
+
+        <div class="emg-top">
+          <div class="bell" id="emgBell"></div>
+          <h1>EMERGENCY</h1>
+          <div class="live-dot" id="emgLiveDot"><i></i> <span id="emgLiveText">Ready</span></div>
+        </div>
+
+        <div id="emgNoProfile" class="no-profile-warn hidden">
+          <span id="emgWarnIcon"></span>
+          <div>
+            No profile selected — the responder won't see allergy/medication info.
+            <br /><button class="subtle" id="btnEmgPickProfile" style="margin-top:0">Choose a profile</button>
+          </div>
+        </div>
+
+        <div class="emg-chip" id="emgChip">
+          <div class="avatar sm" id="emgChipAvatar"></div>
+          <div class="t"><strong id="emgChipName">—</strong><span id="emgChipStatus">Profile active</span></div>
+          <button class="swap" id="btnEmgSwap">Change</button>
+        </div>
+
+        <!-- state 1: describe -->
+        <div id="emgDescribeState">
+          <div class="emg-describe">
+            <label>Describe what happened</label>
+            <textarea id="description" placeholder="Plain words are fine — e.g. “Papa is holding his chest and can't breathe properly”"></textarea>
+            <p class="loc-note" id="locStatus">📡 Getting your location…</p>
+          </div>
+
+          <div class="mic-zone">
+            <button class="mic-btn" id="btnMic"><span id="micIcon"></span><span id="micLabel">TAP TO SPEAK</span></button>
+          </div>
+
+          <div class="emg-actions">
+            <button class="btn-confirm" id="btnConfirm">Confirm emergency</button>
+            <button class="btn-cancel-dark" id="btnCancel">Cancel</button>
+          </div>
+        </div>
+
+        <!-- state 2: live status -->
+        <div id="emgLiveState" class="emg-live hidden">
+          <div class="card">
+            <h2>Emergency active <span class="muted" id="emgId"></span></h2>
+            <ul class="timeline" id="timeline"></ul>
+          </div>
+          <div class="card hidden" id="etaBox" style="text-align:center">
+            <div class="big-eta" id="etaMin" style="color:#fff">–</div>
+            <div class="muted">ambulance ETA (simulated)</div>
+          </div>
+          <div class="card">
+            <h3>Matched hospital</h3>
+            <div id="hospitalBox" class="muted">Matching…</div>
+          </div>
+          <div class="card">
+            <h3>Clinical picture sent ahead</h3>
+            <div id="clinicalBox"></div>
+          </div>
+          <div class="card">
+            <h3>Live map</h3>
+            <div id="map" class="map"></div>
+          </div>
+          <button class="btn-cancel-dark" id="btnNewEmergency" style="width:100%">Start a new emergency</button>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <!-- ============ DESCRIBE ============ -->
-    <div class="card hidden" id="describeCard">
-      <h2>What's happening?</h2>
-      <p class="muted" id="locStatus">📡 Getting location…</p>
-      <div class="row">
-        <textarea id="description" placeholder="Plain words are fine — e.g. 'Papa is holding his chest and can't breathe properly'"></textarea>
-        <button class="mic" id="btnMic" title="Speak instead of typing">🎤</button>
+    <!-- ============ MORE ============ -->
+    <section class="screen hidden" id="screen-more">
+      <div class="section-head" style="margin-top:2px"><h2>Live views</h2></div>
+      <div class="mlist">
+        <a href="/family" target="_blank" class="mrow"><span class="ic" id="moreFamilyIcon"></span><span style="flex:1">Family watch view<span class="sub">Loved ones follow an emergency live</span></span><span class="chev" id="moreFamilyChev"></span></a>
+        <a href="/hospital" target="_blank" class="mrow"><span class="ic" id="moreHospitalIcon"></span><span style="flex:1">Hospital bay screen<span class="sub">The ER sees the clinical picture first</span></span><span class="chev" id="moreHospitalChev"></span></a>
       </div>
-      <button class="primary" id="btnConfirm" style="width:100%;margin-top:10px">🚨 Confirm emergency</button>
-      <button class="ghost" id="btnCancel" style="width:100%;margin-top:8px">Cancel</button>
-    </div>
-
-    <!-- ============ LIVE STATUS ============ -->
-    <div class="card hidden" id="liveCard">
-      <h2>Emergency active <span class="muted" id="emgId"></span></h2>
-      <ul class="timeline" id="timeline"></ul>
-      <div id="etaBox" class="hidden" style="text-align:center;margin:10px 0">
-        <div class="big-eta" id="etaMin">–</div>
-        <div class="muted">ambulance ETA (simulated)</div>
+      <div class="section-head"><h2>Family profiles</h2></div>
+      <div class="mlist">
+        <button class="mrow" id="btnMoreManage" style="width:100%;text-align:left;border-radius:0;box-shadow:none"><span class="ic" id="moreManageIcon"></span><span style="flex:1">Manage family profiles<span class="sub">View, add or edit medical info</span></span><span class="chev" id="moreManageChev"></span></button>
       </div>
-      <h3>Matched hospital</h3>
-      <div id="hospitalBox" class="muted">Matching…</div>
-      <h3>Clinical picture sent ahead</h3>
-      <div id="clinicalBox"></div>
-      <h3>Live map</h3>
-      <div id="map" class="map"></div>
-      <p class="muted" style="margin-top:8px">🚑 Ambulance movement is simulated for this demo. Family view and the hospital bay screen are watching this same emergency live.</p>
-    </div>
+      <p class="footer-note">GoldenBay hackathon prototype · synthetic data only · AI organises information, it does not diagnose · v1</p>
+    </section>
 
-    <div class="link-row">
-      <a href="/family" target="_blank">👪 Family view</a>
-      <a href="/hospital" target="_blank">🏥 Hospital bay screen</a>
+    <!-- ============ TAB BAR ============ -->
+    <nav class="tabbar" id="tabbar">
+      <button class="tab-btn active" data-tab="home"><span id="tabHomeIcon"></span>Home</button>
+      <button class="tab-btn" data-tab="profiles"><span id="tabProfilesIcon"></span>Profiles</button>
+      <button class="tab-btn" data-tab="emergency"><span id="tabEmergencyIcon"></span>Emergency</button>
+      <button class="tab-btn" data-tab="more"><span id="tabMoreIcon"></span>More</button>
+    </nav>
+  </div>
+
+  <!-- ============ NEW / EDIT PROFILE SHEET ============ -->
+  <div class="sheet-backdrop" id="sheetBackdrop"></div>
+  <div class="sheet" id="profileSheet">
+    <div class="grabber"></div>
+    <h2 id="sheetTitle">New family member</h2>
+
+    <label>📷 Prescription / medical report photo (optional — AI can draft the fields below)</label>
+    <input type="file" id="rxPhoto" accept="image/*" />
+    <button id="btnDraft" class="subtle" style="margin-top:8px;width:100%">✦ Draft with AI</button>
+    <p class="muted" id="draftStatus"></p>
+
+    <label>Full name *</label>
+    <input id="pfName" placeholder="e.g. Aisha Sharma" />
+    <div class="row">
+      <div><label>Relation</label>
+        <select id="pfRelation">
+          <option>Self</option><option>Wife</option><option>Husband</option>
+          <option>Son</option><option>Daughter</option><option>Mother</option>
+          <option>Father</option><option>Other</option>
+        </select>
+      </div>
+      <div><label>Age</label><input id="pfAge" type="number" min="0" max="120" /></div>
     </div>
-    <p class="footer-note">GoldenBay hackathon prototype · synthetic data only · AI organises information, it does not diagnose</p>
+    <label>Blood group</label>
+    <input id="pfBlood" placeholder="e.g. O+" />
+    <label>Allergies (comma separated)</label>
+    <input id="pfAllergies" placeholder="e.g. Sulfa drugs, Shellfish" />
+    <label>Medicines (comma separated)</label>
+    <input id="pfMeds" placeholder="e.g. Statins, Ace inhibitors — daily" />
+    <label>History (conditions, comma separated)</label>
+    <input id="pfConditions" placeholder="e.g. Hypertension, Pre-diabetes" />
+    <label>Emergency contact (name, phone)</label>
+    <input id="pfContact" placeholder="e.g. Aisha (Wife), +91-9xxxxxxxxx" />
+    <label>Preferred hospital</label>
+    <input id="pfHospital" placeholder="e.g. Apex Hospital" />
+    <label>Insurance</label>
+    <input id="pfInsurance" placeholder="e.g. Star Health" />
+    <p class="muted">You review everything the AI drafted before saving — the AI only drafts, humans confirm.</p>
+    <div class="row" style="margin-top:12px">
+      <button class="ghost" id="btnSheetCancel">Cancel</button>
+      <button class="primary" id="btnSaveProfile">Save profile</button>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="icons.js"></script>
   <script src="shared.js"></script>
   <script src="patient.js"></script>
 </body>
