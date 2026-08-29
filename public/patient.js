@@ -450,15 +450,25 @@ function wireEmergency() {
     rec.start();
   };
 
+  // Default OFF: GoldenBay's demo hospitals are all fixed in Delhi, so a real
+  // GPS reading from anywhere else produces a real (huge) distance/ETA that
+  // *looks* broken even though the math is correct. Keep the flow reliable
+  // for anyone testing it out of town by defaulting to the demo location;
+  // the checkbox lets someone nearby prove real GPS works.
+  $('useRealGps').onchange = () => {
+    if ($('useRealGps').checked) captureRealLocation();
+    else $('locStatus').textContent = "📍 Using GoldenBay's demo service area so hospital matching stays realistic.";
+  };
+
   $('btnConfirm').onclick = async () => {
     $('btnConfirm').disabled = true;
     try {
-      captureLocationOnce();
+      const useReal = $('useRealGps').checked && currentLocation;
       const { emergency } = await api('POST', '/v1/emergencies', {
         profileId: activeProfileId || null,
         description: $('description').value,
-        location: currentLocation,
-        useDemoLocation: !currentLocation,
+        location: useReal ? currentLocation : null,
+        useDemoLocation: !useReal,
       });
       currentEmergencyId = emergency.id;
       $('emgDescribeState').classList.add('hidden');
@@ -473,19 +483,25 @@ function wireEmergency() {
   };
 }
 
-function captureLocationOnce() {
-  if (currentLocation || !navigator.geolocation) return;
+function captureRealLocation() {
+  if (!navigator.geolocation) {
+    $('locStatus').textContent = '📍 No GPS in this browser — staying on the demo location.';
+    $('useRealGps').checked = false;
+    return;
+  }
+  $('locStatus').textContent = '📡 Getting your real location…';
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy) };
-      $('locStatus').textContent = `📍 Location captured (±${currentLocation.accuracy}m)`;
+      $('locStatus').textContent = `📍 Real location captured (±${currentLocation.accuracy}m) — note the demo hospitals are all in Delhi, so distance/ETA will only make sense if you're nearby.`;
     },
-    () => { $('locStatus').textContent = '📍 Location unavailable — using demo location so the flow continues.'; },
+    () => {
+      $('locStatus').textContent = '📍 Location unavailable/denied — staying on the demo location.';
+      $('useRealGps').checked = false;
+    },
     { enableHighAccuracy: true, timeout: 6000 }
   );
 }
-// Kick off location capture as soon as the emergency tab is opened, not just on confirm.
-document.addEventListener('DOMContentLoaded', captureLocationOnce);
 
 function watchEmergency(emergency) {
   renderEmergency(emergency);

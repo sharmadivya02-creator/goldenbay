@@ -76,9 +76,14 @@ function simulateAmbulance(io, emergency) {
   const start = { lat: hospitalLoc.lat + 0.004, lng: hospitalLoc.lng - 0.004 };
 
   const legOutKm = distanceKm(start, patientLoc);
-  const legBackKm = distanceKm(patientLoc, hospitalLoc);
-  const etaOutMin = Math.max(1, Math.round((legOutKm / AMBULANCE_SPEED_KMH) * 60));
-  const etaBackMin = Math.max(1, Math.round((legBackKm / AMBULANCE_SPEED_KMH) * 60));
+const legBackKm = distanceKm(patientLoc, hospitalLoc);
+// Safety clamp: the demo hospitals are fixed in Delhi, so an emergency
+// created from far away (real GPS opted into, or a bad demo location)
+// would otherwise compute an honest but absurd-looking ETA (hours, not
+// minutes). Cap it so the simulated ambulance always reads as plausible.
+const MAX_DEMO_ETA_MIN = 25;
+const etaOutMin = Math.min(MAX_DEMO_ETA_MIN, Math.max(1, Math.round((legOutKm / AMBULANCE_SPEED_KMH) * 60)));
+const etaBackMin = Math.min(MAX_DEMO_ETA_MIN, Math.max(1, Math.round((legBackKm / AMBULANCE_SPEED_KMH) * 60)));
 
   const outSteps = Math.max(4, Math.round(((etaOutMin * 60) / DEMO_TIME_SCALE / TICK_MS) * 1000));
   const backSteps = Math.max(4, Math.round(((etaBackMin * 60) / DEMO_TIME_SCALE / TICK_MS) * 1000));

@@ -316,7 +316,8 @@ ul.plain { margin: 6px 0; padding-left: 18px; font-size: 14px; }
 .emg-describe textarea::placeholder { color: rgba(255,255,255,0.45); }
 .emg-describe textarea:focus { outline: none; border-color: #ff9aa1; box-shadow: 0 0 0 3px rgba(255,90,100,0.22); }
 .loc-note { font-size: 11.5px; color: #ffc7cc; margin-top: 6px; }
-
+.loc-toggle { display: flex; align-items: flex-start; gap: 7px; font-size: 11.5px; color: rgba(255,255,255,0.65); font-weight: 500; margin-top: 8px; cursor: pointer; }
+.loc-toggle input { width: auto; margin: 2px 0 0; accent-color: #fff; flex: none; }
 .mic-zone { text-align: center; padding: 22px 0 10px; }
 .mic-btn {
   width: 128px; height: 128px; border-radius: 50%; margin: 0 auto;
