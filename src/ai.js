@@ -77,12 +77,12 @@ async function callGemini(parts) {
     },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
+      // NOTE: we deliberately do NOT set maxOutputTokens. On thinking models
+      // the reasoning tokens count against that budget, so a cap that looks
+      // generous can still cut the answer off mid-JSON. The default is large.
       generationConfig: {
         responseMimeType: 'application/json',
         temperature: 0.2,
-        // Thinking models spend tokens reasoning before they answer. Without
-        // enough headroom the answer gets cut off mid-JSON and parsing fails.
-        maxOutputTokens: 4096,
       },
     }),
   });
@@ -371,4 +371,29 @@ async function readScene(base64Jpeg, mimeType) {
   return mockScene();
 }
 
-module.exports = { draftProfileFromImage, composeClinicalPicture, summarizeProfile, readScene, geminiEnabled, selfTest, getLastError };
+// ---------------------------------------------------------------------------
+// 5) A lab report photo → the raw values it claims to see.
+//
+// The prompt lives in labs.js, because everything this returns is going to be
+// checked against reference tables before a human sees it. This function's only
+// job is to hand over what the model claims. It is not trusted.
+// ---------------------------------------------------------------------------
+async function readLabReport(base64Data, mimeType, prompt) {
+  if (geminiEnabled()) {
+    try {
+      const result = await callGemini([
+        { text: prompt },
+        { inlineData: { mimeType: mimeType || 'image/jpeg', data: base64Data } },
+      ]);
+      return { ...result, _source: 'gemini' };
+    } catch (err) {
+      noteError('lab report read', err);
+      const { mockLabExtraction } = require('./labs');
+      return { ...mockLabExtraction(), _fallbackReason: err.message };
+    }
+  }
+  const { mockLabExtraction } = require('./labs');
+  return mockLabExtraction();
+}
+
+module.exports = { draftProfileFromImage, composeClinicalPicture, summarizeProfile, readScene, readLabReport, geminiEnabled, selfTest, getLastError };

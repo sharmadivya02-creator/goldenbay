@@ -29,6 +29,7 @@ const store = require('./src/store');
 const { seed, DEMO_CENTER } = require('./src/seed');
 const ai = require('./src/ai');
 const dispatch = require('./src/dispatch');
+const labs = require('./src/labs');
 
 const app = express();
 const server = http.createServer(app);
@@ -46,6 +47,7 @@ seed();
 app.get('/family', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'family.html')));
 app.get('/hospital', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'hospital.html')));
 app.get('/copilot', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'copilot.html')));
+app.get('/labs', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'labs.html')));
 
 // ---------------------------------------------------------------------------
 // API
@@ -61,6 +63,104 @@ app.get('/v1/ai-status', async (_req, res) => {
 });
 
 app.get('/v1/hospitals', (_req, res) => res.json({ hospitals: store.all('hospitals') }));
+
+// ---------------------------------------------------------------------------
+// Lab reports — read, VERIFY, trend.
+// ---------------------------------------------------------------------------
+
+// every report we already hold for this person, oldest first
+app.get('/v1/labs/:profileId', (req, res) => {
+  const reports = store.all('labReports')
+    .filter((r) => r.profileId === req.params.profileId)
+    .sort((a, b) => new Date(a.reportDate || a.createdAt) - new Date(b.reportDate || b.createdAt));
+  res.json({ reports });
+});
+
+// analyse a new one
+app.post('/v1/labs/analyze', async (req, res) => {
+  const { profileId, imageBase64, mimeType } = req.body || {};
+  if (!imageBase64) {
+    return res.status(400).json({ error: { code: 'VALIDATION_FAILED', message: 'imageBase64 is required' } });
+  }
+
+  const profile = profileId ? store.find('profiles', profileId) : null;
+  const previousReports = store.all('labReports')
+    .filter((r) => r.profileId === profileId)
+    .sort((a, b) => new Date(a.reportDate || a.createdAt) - new Date(b.reportDate || b.createdAt));
+
+  try {
+    const analysis = await labs.analyseReport({
+      base64: imageBase64, mimeType, profile, previousReports,
+    });
+
+    // only keep it if it was actually a lab report we could use
+    let saved = null;
+    if (analysis.values.length) {
+      saved = store.insert('labReports', {
+        profileId: profileId || null,
+        reportDate: analysis.reportDate || new Date().toISOString().slice(0, 10),
+        labName: analysis.labName || null,
+        values: analysis.values,
+        source: analysis.source,
+      });
+    }
+
+    res.json({ analysis, savedId: saved?.id || null });
+  } catch (err) {
+    console.error('[labs] analysis failed:', err);
+    res.status(500).json({ error: { code: 'LAB_ANALYSIS_FAILED', message: err.message } });
+  }
+});
+
+// delete one (so a demo can be reset without touching profiles)
+app.delete('/v1/labs/:id', (req, res) => {
+  const ok = store.remove ? store.remove('labReports', req.params.id) : null;
+  res.json({ ok: !!ok });
+});
+
+// DEMO SAFETY: drop two older reports in for this person so the trend line has
+// history to draw even with no internet, no Gemini and no real paperwork. The
+// values are synthetic and labelled as such.
+app.post('/v1/labs/demo-history', (req, res) => {
+  const { profileId } = req.body || {};
+  if (!profileId) return res.status(400).json({ error: { code: 'VALIDATION_FAILED', message: 'profileId required' } });
+
+  // clear any previous demo history for this person so it never doubles up
+  for (const r of store.all('labReports').filter((r) => r.profileId === profileId && r.isDemo)) {
+    store.remove('labReports', r.id);
+  }
+
+  const mk = (monthsAgo, creat, hba1c, hb, k) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - monthsAgo);
+    return store.insert('labReports', {
+      profileId,
+      isDemo: true,
+      reportDate: d.toISOString().slice(0, 10),
+      labName: 'Demo Diagnostics (synthetic)',
+      source: 'demo',
+      values: [
+        { key: 'creatinine', testName: 'Creatinine', value: creat, unit: 'mg/dL',
+          normalRange: [0.7, 1.3], status: creat > 1.3 ? 'high' : 'normal',
+          verdict: 'verified', confidence: 97, checks: [], means: 'how well the kidneys are filtering' },
+        { key: 'hba1c', testName: 'HbA1c', value: hba1c, unit: '%',
+          normalRange: [4.0, 5.6], status: hba1c > 5.6 ? 'high' : 'normal',
+          verdict: 'verified', confidence: 96, checks: [], means: 'average blood sugar over three months' },
+        { key: 'haemoglobin', testName: 'Haemoglobin', value: hb, unit: 'g/dL',
+          normalRange: [13.0, 17.0], status: hb < 13 ? 'low' : 'normal',
+          verdict: 'verified', confidence: 95, checks: [], means: 'oxygen-carrying capacity of the blood' },
+        { key: 'potassium', testName: 'Potassium', value: k, unit: 'mEq/L',
+          normalRange: [3.5, 5.1], status: k > 5.1 ? 'high' : 'normal',
+          verdict: 'verified', confidence: 94, checks: [], means: 'affects the heart rhythm directly' },
+      ],
+    });
+  };
+
+  // 18 months of quiet deterioration nobody put side by side
+  const a = mk(18, 1.1, 6.1, 14.2, 4.4);
+  const b = mk(6, 1.4, 6.8, 13.1, 4.9);
+  res.json({ ok: true, created: [a.id, b.id] });
+});
 
 app.get('/v1/profiles', (_req, res) => res.json({ profiles: store.all('profiles') }));
 
@@ -232,7 +332,10 @@ io.on('connection', (socket) => {
 // Gemini watches the scene — but only every SCENE_EVERY_MS, because frames
 // arrive twice a second and we are not going to make 120 AI calls a minute.
 // ---------------------------------------------------------------------------
-const SCENE_EVERY_MS = 6000;
+// How often Gemini looks at the scene. Keep this HIGH: the free tier allows
+// only ~10-15 requests a minute, and reading the scene every few seconds will
+// burn through the whole quota in one demo run and push everything to mock.
+const SCENE_EVERY_MS = 20000;
 const lastSceneAt = new Map();   // emergency id → when we last asked Gemini
 const sceneBusy   = new Set();   // don't start a second call while one is running
 

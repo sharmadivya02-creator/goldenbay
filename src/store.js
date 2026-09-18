@@ -13,7 +13,7 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 // In-memory copy of the whole database. Reads are instant; writes are
 // flushed to disk shortly after (debounced) so rapid updates don't hammer the disk.
-let db = { profiles: [], emergencies: [], hospitals: [] };
+let db = { profiles: [], emergencies: [], hospitals: [], labReports: [] };
 let saveTimer = null;
 
 function load() {
@@ -25,7 +25,7 @@ function load() {
       console.error('[store] db.json was corrupt, starting fresh:', err.message);
     }
   }
-  for (const key of ['profiles', 'emergencies', 'hospitals']) {
+  for (const key of ['profiles', 'emergencies', 'hospitals', 'labReports']) {
     if (!Array.isArray(db[key])) db[key] = [];
   }
 }
@@ -66,6 +66,14 @@ module.exports = {
     Object.assign(record, changes, { updatedAt: new Date().toISOString() });
     scheduleSave();
     return record;
+  },
+
+  remove(collection, id) {
+    const i = db[collection].findIndex((item) => item.id === id);
+    if (i === -1) return false;
+    db[collection].splice(i, 1);
+    scheduleSave();
+    return true;
   },
 
   // Replace an entire collection (used by seeding).
