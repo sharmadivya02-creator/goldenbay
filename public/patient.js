@@ -640,6 +640,11 @@ function renderEmergency(e) {
   renderTimeline($('timeline'), e.status);
   renderClinicalPicture($('clinicalBox'), e.clinicalPicture);
 
+  // Point the CPR Co-Pilot at THIS emergency, so the hospital screen knows
+  // which incoming patient the live feed belongs to.
+  const copilot = $('btnCopilot');
+  if (copilot) copilot.href = '/copilot?e=' + encodeURIComponent(e.id);
+
   if (e.hospitalName) {
     $('hospitalBox').innerHTML = `
       <p class="kv" style="color:#fff;font-size:16px"><b>🏥</b> <strong>${esc(e.hospitalName)}</strong></p>

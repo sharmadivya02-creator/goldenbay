@@ -45,12 +45,19 @@ seed();
 // ---------------------------------------------------------------------------
 app.get('/family', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'family.html')));
 app.get('/hospital', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'hospital.html')));
+app.get('/copilot', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'copilot.html')));
 
 // ---------------------------------------------------------------------------
 // API
 // ---------------------------------------------------------------------------
 app.get('/v1/health', (_req, res) => {
   res.json({ ok: true, ai: ai.geminiEnabled() ? 'gemini' : 'mock', demoCenter: DEMO_CENTER });
+});
+
+// Open http://localhost:3000/v1/ai-status in a browser to see, in plain JSON,
+// whether Gemini is actually working and exactly why it isn't if it isn't.
+app.get('/v1/ai-status', async (_req, res) => {
+  res.json(await ai.selfTest());
 });
 
 app.get('/v1/hospitals', (_req, res) => res.json({ hospitals: store.all('hospitals') }));
@@ -200,10 +207,68 @@ async function processEmergency(emergency, profile) {
 io.on('connection', (socket) => {
   socket.on('watch:emergency', (emergencyId) => socket.join(`emergency:${emergencyId}`));
   socket.on('watch:hospital-feed', () => socket.join('hospital-feed'));
+
+  // ---- CPR Co-Pilot ----
+  // The rescuer's phone sends a small picture + live CPR numbers a couple of
+  // times a second. We pass them straight through to the hospital screen and
+  // to anyone watching this particular emergency. Nothing is stored.
+  socket.on('copilot:frame', (payload) => {
+    if (!payload || typeof payload !== 'object') return;
+    const safe = {
+      emergencyId: payload.emergencyId || null,
+      jpeg: typeof payload.jpeg === 'string' ? payload.jpeg.slice(0, 400000) : null,
+      stats: payload.stats || {},
+      at: Date.now(),
+    };
+    io.to('hospital-feed').emit('copilot:frame', safe);
+    if (safe.emergencyId) io.to(`emergency:${safe.emergencyId}`).emit('copilot:frame', safe);
+
+    // Every few seconds, hand one frame to Gemini and ask what it can SEE.
+    maybeReadScene(safe);
+  });
 });
+
+// ---------------------------------------------------------------------------
+// Gemini watches the scene — but only every SCENE_EVERY_MS, because frames
+// arrive twice a second and we are not going to make 120 AI calls a minute.
+// ---------------------------------------------------------------------------
+const SCENE_EVERY_MS = 6000;
+const lastSceneAt = new Map();   // emergency id → when we last asked Gemini
+const sceneBusy   = new Set();   // don't start a second call while one is running
+
+async function maybeReadScene(frame) {
+  const key = frame.emergencyId || 'unassigned';
+  if (!frame.jpeg) return;
+  if (sceneBusy.has(key)) return;
+  if (Date.now() - (lastSceneAt.get(key) || 0) < SCENE_EVERY_MS) return;
+
+  lastSceneAt.set(key, Date.now());
+  sceneBusy.add(key);
+  try {
+    // strip the "data:image/jpeg;base64," prefix — Gemini wants the raw part
+    const base64 = frame.jpeg.split(',')[1];
+    if (!base64) return;
+
+    const scene = await ai.readScene(base64, 'image/jpeg');
+    const msg = { emergencyId: frame.emergencyId, scene, at: Date.now() };
+
+    io.to('hospital-feed').emit('copilot:scene', msg);
+    if (frame.emergencyId) io.to(`emergency:${frame.emergencyId}`).emit('copilot:scene', msg);
+  } catch (err) {
+    console.error('[copilot] scene read failed:', err.message);
+  } finally {
+    sceneBusy.delete(key);
+  }
+}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`GoldenBay demo running → http://localhost:${PORT}`);
-  console.log(`AI mode: ${ai.geminiEnabled() ? 'Gemini (' + (process.env.GEMINI_MODEL || 'gemini-2.5-flash') + ')' : 'MOCK (no key configured — flows still work)'}`);
+  if (ai.geminiEnabled()) {
+    const k = (process.env.GEMINI_API_KEY || '').trim();
+    console.log(`AI mode: Gemini (${process.env.GEMINI_MODEL || 'gemini-3.6-flash'})`);
+    console.log(`         key loaded: ${k.slice(0, 6)}…${k.slice(-4)} (${k.length} chars)`);
+  } else {
+    console.log('AI mode: MOCK (no key configured — every flow still works)');
+  }
 });

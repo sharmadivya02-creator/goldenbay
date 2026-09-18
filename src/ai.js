@@ -11,33 +11,118 @@
 // RESILIENCE: any Gemini failure (bad key, network, rate limit) automatically
 // falls back to the mock — the demo can never die on stage because of the AI.
 
-const GEMINI_URL = (model, key) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+const GEMINI_URL = (model) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+// Google's API keys now come in two shapes: the old "AIza..." ones and the
+// newer "AQ...." ones. The newer keys are REJECTED if you put them in the URL
+// as ?key=... — they must go in the x-goog-api-key header. Sending the header
+// works for both kinds, so we always use the header.
+function apiKey() {
+  return (process.env.GEMINI_API_KEY || '').trim();
+}
+
+// Remembers why the last Gemini call failed, so we can show it in the browser
+// at /v1/ai-status instead of making you dig through the terminal.
+let lastError = null;
+function noteError(where, err) {
+  lastError = { where, message: err.message, at: new Date().toISOString() };
+  console.error(`[ai] ${where} failed → using mock:`, err.message);
+}
+function getLastError() { return lastError; }
+
+// Makes one real call right now and reports exactly what happened.
+async function selfTest() {
+  const key = apiKey();
+  const info = {
+    keyPresent: !!key,
+    keyLength: key.length,
+    keyStartsWith: key.slice(0, 8),
+    model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+    mockAiSetting: process.env.MOCK_AI || '(not set)',
+    geminiEnabled: geminiEnabled(),
+    lastError,
+  };
+  if (!info.geminiEnabled) {
+    info.result = 'DISABLED — either no key, or MOCK_AI=true';
+    return info;
+  }
+  try {
+    const out = await callGemini([
+      { text: 'Return JSON exactly: {"status":"working"}' },
+    ]);
+    info.result = 'SUCCESS ✅';
+    info.reply = out;
+  } catch (err) {
+    info.result = 'FAILED ❌';
+    info.error = err.message;
+  }
+  return info;
+}
 
 function geminiEnabled() {
-  const key = process.env.GEMINI_API_KEY || '';
+  const key = apiKey();
   const mock = String(process.env.MOCK_AI || '').toLowerCase() === 'true';
-  return !mock && key && !key.startsWith('paste-');
+  return !mock && !!key && !key.startsWith('paste-');
 }
 
 async function callGemini(parts) {
-  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const res = await fetch(GEMINI_URL(model, process.env.GEMINI_API_KEY), {
+  // gemini-2.5-flash was retired for new keys — 3.6-flash is the current fast model.
+  const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+  const res = await fetch(GEMINI_URL(model), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey(),
+    },
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.2,
+        // Thinking models spend tokens reasoning before they answer. Without
+        // enough headroom the answer gets cut off mid-JSON and parsing fails.
+        maxOutputTokens: 4096,
+      },
     }),
   });
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Gemini HTTP ${res.status}: ${body.slice(0, 300)}`);
   }
+
   const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini returned no text');
-  return JSON.parse(text);
+  const candidate = data?.candidates?.[0];
+  const replyParts = candidate?.content?.parts || [];
+
+  // Gemini 3.x models THINK before answering, and their thinking comes back as
+  // extra parts in the same response. Taking parts[0] blindly gets you the
+  // model's reasoning instead of the answer — which is not JSON, so parsing
+  // explodes. So: skip anything flagged as a thought, and join the real text.
+  const text = replyParts
+    .filter((p) => p && typeof p.text === 'string' && p.thought !== true)
+    .map((p) => p.text)
+    .join('')
+    .trim();
+
+  if (!text) {
+    throw new Error(
+      `no usable text (finishReason=${candidate?.finishReason || 'unknown'}, ` +
+      `parts=${replyParts.length})`
+    );
+  }
+
+  // Some models wrap JSON in a ```json fence even when asked not to.
+  const cleaned = text
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/, '')
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error(`bad JSON from Gemini: ${cleaned.slice(0, 200)}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +169,8 @@ async function draftProfileFromImage(base64Data, mimeType) {
       ]);
       return { ...result, _source: 'gemini' };
     } catch (err) {
-      console.error('[ai] Gemini profile draft failed, using mock:', err.message);
+      noteError('profile draft', err);
+      return { ...mockProfileDraft(), _fallbackReason: err.message };
     }
   }
   return mockProfileDraft();
@@ -159,7 +245,8 @@ async function composeClinicalPicture(description, profile) {
       const result = await callGemini([{ text: CLINICAL_PROMPT(description, profile) }]);
       return { ...result, _source: 'gemini' };
     } catch (err) {
-      console.error('[ai] Gemini clinical picture failed, using mock:', err.message);
+      noteError('clinical picture', err);
+      return { ...mockClinicalPicture(description, profile), _fallbackReason: err.message };
     }
   }
   return mockClinicalPicture(description, profile);
@@ -220,10 +307,68 @@ async function summarizeProfile(profile) {
       const result = await callGemini([{ text: SUMMARY_PROMPT(profile) }]);
       return { ...result, _source: 'gemini' };
     } catch (err) {
-      console.error('[ai] Gemini profile summary failed, using mock:', err.message);
+      noteError('profile summary', err);
+      return { ...mockProfileSummary(profile), _fallbackReason: err.message };
     }
   }
   return mockProfileSummary(profile);
 }
 
-module.exports = { draftProfileFromImage, composeClinicalPicture, summarizeProfile, geminiEnabled };
+// ---------------------------------------------------------------------------
+// 4) A frame from the CPR Co-Pilot camera → what the ER can see from here
+//
+// This is DESCRIPTION, not diagnosis. We ask only for things a person could
+// see by looking: is someone doing compressions, is there visible bleeding,
+// is the patient on a hard surface, are there hazards around. The ER uses it
+// to prepare; it never decides anything on its own.
+// ---------------------------------------------------------------------------
+
+const SCENE_PROMPT = `You are looking at one still frame from a bystander's phone at the scene of a medical emergency, sent to a hospital emergency department so they can prepare.
+
+Describe ONLY what is visibly true in this image. Do not diagnose. Do not guess at anything you cannot see. If you cannot tell, say so.
+
+Return JSON exactly in this shape:
+{
+  "cprInProgress": true|false|null,        // is someone visibly pressing on a chest?
+  "patientPosition": string|null,          // e.g. "on their back on a hard floor", "slumped against a wall", "unclear"
+  "visibleBleeding": "none visible"|"minor"|"significant"|"cannot tell",
+  "surface": "hard"|"soft"|"cannot tell",  // CPR needs a hard surface — the ER wants to know
+  "peopleHelping": number|null,            // how many people are visibly assisting
+  "environment": string|null,              // e.g. "roadside, daylight, traffic nearby", "indoor room"
+  "hazards": string[],                     // anything visibly dangerous: traffic, fire, water, crowd
+  "notesForER": string,                    // one short sentence a doctor can read in 2 seconds
+  "cannotSee": string[]                    // important things this frame does NOT show
+}`;
+
+function mockScene() {
+  return {
+    cprInProgress: true,
+    patientPosition: 'on their back on a flat surface',
+    visibleBleeding: 'none visible',
+    surface: 'hard',
+    peopleHelping: 1,
+    environment: 'indoor, well lit (mock mode)',
+    hazards: [],
+    notesForER: 'MOCK MODE: one rescuer giving compressions, patient flat, no visible bleeding.',
+    cannotSee: ['face', 'airway', 'lower body'],
+    _source: 'mock',
+  };
+}
+
+async function readScene(base64Jpeg, mimeType) {
+  if (geminiEnabled()) {
+    try {
+      const result = await callGemini([
+        { text: SCENE_PROMPT },
+        { inlineData: { mimeType: mimeType || 'image/jpeg', data: base64Jpeg } },
+      ]);
+      return { ...result, _source: 'gemini' };
+    } catch (err) {
+      noteError('scene read', err);
+      return { ...mockScene(), _fallbackReason: err.message };
+    }
+  }
+  return mockScene();
+}
+
+module.exports = { draftProfileFromImage, composeClinicalPicture, summarizeProfile, readScene, geminiEnabled, selfTest, getLastError };
