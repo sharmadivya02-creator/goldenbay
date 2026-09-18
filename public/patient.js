@@ -642,6 +642,82 @@ function watchEmergency(emergency) {
     $('etaMin').textContent = msg.etaMinutes + ' min';
     if (liveMap) liveMap.moveAmbulance(msg.position);
   });
+
+  // ---- the Dispatch Agent, working in the open ----
+  agentSteps = 0;
+  $('agentLog').innerHTML = '<div class="agent-empty">agent starting…</div>';
+  socket.on('agent:action', (a) => {
+    if (a.emergencyId !== emergency.id) return;
+    renderAgentStep(a);
+  });
+  socket.on('agent:question', (q) => {
+    if (q.emergencyId !== emergency.id) return;
+    const el = document.createElement('div');
+    el.className = 'agent-question';
+    el.textContent = '❓ ' + q.question;
+    $('agentLog').prepend(el);
+  });
+  buildAgentDemoControls(emergency);
+}
+
+// ---------------------------------------------------------------------------
+// Agent log — newest first, because during an emergency the latest decision is
+// the one that matters.
+// ---------------------------------------------------------------------------
+let agentSteps = 0;
+
+function renderAgentStep(a) {
+  const log = $('agentLog');
+  log.querySelector('.agent-empty')?.remove();
+
+  const args = Object.entries(a.args || {})
+    .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+    .join(' · ');
+
+  const el = document.createElement('div');
+  el.className = 'agent-step ' + a.tool;
+  el.innerHTML = `
+    <div class="agent-n">${a.step}</div>
+    <div>
+      <div><span class="agent-tool">${esc(a.tool)}()</span>${args ? `<span class="agent-args">${esc(args)}</span>` : ''}</div>
+      ${a.reason ? `<div class="agent-why">${esc(a.reason)}</div>` : ''}
+    </div>`;
+  log.prepend(el);
+
+  agentSteps = Math.max(agentSteps, a.step);
+  $('agentSteps').textContent = agentSteps + (agentSteps === 1 ? ' action' : ' actions');
+}
+
+// The demo spanner: knock out the hospital the agent just chose, and watch it
+// discover the problem by itself.
+async function buildAgentDemoControls(emergency) {
+  const row = $('agentDemoRow');
+  if (!row) return;
+  const hs = hospitals.length ? hospitals : (await api('GET', '/v1/hospitals')).hospitals;
+
+  const current = () => {
+    const id = $('hospitalBox')?.dataset?.hospitalId || emergency.hospitalId;
+    return hs.find((h) => h.id === id) || hs.find((h) => h.id === emergency.hospitalId);
+  };
+
+  row.innerHTML = `
+    <button data-act="cath">🔧 Take the cath lab out of service</button>
+    <button data-act="beds">🛏 Take the last ER bed</button>
+    <button data-act="reset">↺ Put everything back</button>`;
+
+  row.querySelectorAll('button').forEach((b) => {
+    b.onclick = async () => {
+      const h = current();
+      if (!h) return;
+      if (b.dataset.act === 'cath') await api('POST', `/v1/hospitals/${h.id}/state`, { cathLabBusy: true });
+      if (b.dataset.act === 'beds') await api('POST', `/v1/hospitals/${h.id}/state`, { bedsFree: 0 });
+      if (b.dataset.act === 'reset') {
+        for (const x of hs) await api('POST', `/v1/hospitals/${x.id}/state`, { cathLabBusy: false, bedsFree: x.erBeds });
+      }
+      b.textContent = '✓ done — watch the log';
+      setTimeout(() => buildAgentDemoControls(emergency), 2500);
+    };
+  });
 }
 
 function renderEmergency(e) {
@@ -654,7 +730,9 @@ function renderEmergency(e) {
   if (copilot) copilot.href = '/copilot?e=' + encodeURIComponent(e.id);
 
   if (e.hospitalName) {
+    $('hospitalBox').dataset.hospitalId = e.hospitalId || '';
     $('hospitalBox').innerHTML = `
+      ${e.rerouted ? `<p class="kv" style="color:#ff8f8f;font-weight:700">↻ Rerouted by the dispatch agent</p>` : ''}
       <p class="kv" style="color:#fff;font-size:16px"><b>🏥</b> <strong>${esc(e.hospitalName)}</strong></p>
       <p class="kv"><b>Distance</b> ${e.hospitalDistanceKm} km · <b>Capability match</b> ${e.capabilityMatch}%</p>
       ${e.alternatives?.length ? `<p class="muted">Also considered: ${e.alternatives.map((a) => `${esc(a.name)} (${a.capabilityMatch}%, ${a.distanceKm}km)`).join(' · ')}</p>` : ''}

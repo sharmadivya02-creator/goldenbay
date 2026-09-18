@@ -146,6 +146,25 @@
             <h3>Matched hospital</h3>
             <div id="hospitalBox" class="muted">Matching…</div>
           </div>
+          <!-- The Dispatch Agent, working. Every line is a tool it called and
+               the reason it called it. Nothing here is scripted. -->
+          <div class="card agent-card">
+            <h3>
+              <span class="agent-live"></span>
+              Dispatch agent
+              <span class="agent-steps" id="agentSteps">0 actions</span>
+            </h3>
+            <div id="agentLog" class="agent-log">
+              <div class="agent-empty">waiting for the clinical picture…</div>
+            </div>
+
+            <details class="agent-demo">
+              <summary>Demo controls — change the world and watch it react</summary>
+              <div class="agent-demo-row" id="agentDemoRow"></div>
+              <p class="agent-demo-note">Nobody tells the agent what to do about this. It notices on its next cycle.</p>
+            </details>
+          </div>
+
           <div class="card">
             <h3>Clinical picture sent ahead</h3>
             <div id="clinicalBox"></div>

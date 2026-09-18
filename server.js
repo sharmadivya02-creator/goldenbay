@@ -30,6 +30,7 @@ const { seed, DEMO_CENTER } = require('./src/seed');
 const ai = require('./src/ai');
 const dispatch = require('./src/dispatch');
 const labs = require('./src/labs');
+const agent = require('./src/agent');
 
 const app = express();
 const server = http.createServer(app);
@@ -63,6 +64,35 @@ app.get('/v1/ai-status', async (_req, res) => {
 });
 
 app.get('/v1/hospitals', (_req, res) => res.json({ hospitals: store.all('hospitals') }));
+
+// ---------------------------------------------------------------------------
+// The Dispatch Agent
+// ---------------------------------------------------------------------------
+
+// everything the agent has done on this emergency, with its reasoning
+app.get('/v1/agent/:emergencyId', (req, res) => {
+  res.json({ log: agent.getLog(req.params.emergencyId) });
+});
+
+// THE DEMO SPANNER.
+// Take a hospital's cath lab out of service, or its last bed. Nobody tells the
+// agent what to do about it — it notices on its next cycle and decides.
+app.post('/v1/hospitals/:id/state', (req, res) => {
+  const h = store.find('hospitals', req.params.id);
+  if (!h) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'hospital not found' } });
+
+  const changes = {};
+  if ('cathLabBusy' in req.body) changes.cathLabBusy = !!req.body.cathLabBusy;
+  if ('bedsFree' in req.body) changes.bedsFree = Math.max(0, parseInt(req.body.bedsFree, 10) || 0);
+
+  const updated = store.update('hospitals', h.id, changes);
+  io.to('hospital-feed').emit('hospital:state', {
+    hospitalId: h.id, name: h.name,
+    bedsFree: updated.bedsFree ?? updated.erBeds,
+    cathLabBusy: !!updated.cathLabBusy,
+  });
+  res.json({ hospital: updated });
+});
 
 // ---------------------------------------------------------------------------
 // Lab reports — read, VERIFY, trend.
@@ -297,7 +327,12 @@ async function processEmergency(emergency, profile) {
   });
   emit(updated);
 
-  // 3) Simulated ambulance runs the rest of the lifecycle.
+  // 3) THE DISPATCH AGENT takes over. It has a goal, real tools, and the right
+  //    to change this decision later if the world changes. It runs for the whole
+  //    emergency, not once.
+  agent.startAgent(io, updated, profile || {});
+
+  // 4) Simulated ambulance runs the rest of the lifecycle.
   dispatch.simulateAmbulance(io, updated);
 }
 

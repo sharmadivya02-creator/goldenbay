@@ -1,328 +1,367 @@
-// labs.js — the Lab Report screen.
+// labs.js — the Lab Report Agent.
 //
-// The hero of this page is ONE picture: the same test, across every report this
-// family holds, with the normal range behind it. Nobody has ever seen their own
-// results as a line — you get one sheet at a time, months apart, in a folder.
+// THE IDEA IN ONE LINE:
+//   Gemini reads the report. We do not believe it. Every number it claims is
+//   checked against real tables before a human ever sees it, and each one
+//   carries its own confidence and the reason for that confidence.
+//
+// THE THREE CONFIDENCES (never mixed):
+//   1. Did we READ it right?        → the gauntlet below. Can be very high.
+//   2. Is it ABNORMAL?              → a table lookup. No AI involved. Certain.
+//   3. Does it MATTER for you?      → reasoning. Lowest. Always "ask a doctor".
+//
+// The AI never decides anything. It reads, and it explains what the tables found.
 
-const $ = (id) => document.getElementById(id);
-
-let profiles = [];
-let currentProfileId = null;
-let lastAnalysis = null;
-let activeTrendKey = null;
+const ref = require('./lab-reference');
+const ai = require('./ai');
 
 // ---------------------------------------------------------------------------
-// boot
+// What we ask Gemini for. Note: we ask for the range PRINTED ON THE REPORT too,
+// because that gives us a free second opinion we can check its reading against.
 // ---------------------------------------------------------------------------
-(async function boot() {
-  const data = await api('GET', '/v1/profiles');
-  profiles = data.profiles || [];
-  $('who').innerHTML = profiles
-    .map((p) => `<option value="${p.id}">${esc(p.fullName)}</option>`)
-    .join('') || '<option>No profiles</option>';
-  // if we arrived from a person's profile page, preselect them
-  const wanted = new URLSearchParams(location.search).get('p');
-  currentProfileId = (wanted && profiles.some((p) => p.id === wanted)) ? wanted : (profiles[0]?.id || null);
-  if (currentProfileId) $('who').value = currentProfileId;
+const LAB_PROMPT = `You are reading a photograph or scan of a medical laboratory report, for a system that will VERIFY everything you say against reference tables.
 
-  $('who').addEventListener('change', (e) => { currentProfileId = e.target.value; $('out').innerHTML = ''; });
-  $('btnPick').addEventListener('click', () => $('file').click());
-  $('file').addEventListener('change', (e) => e.target.files[0] && analyse(e.target.files[0]));
-  $('btnHistory').addEventListener('click', loadHistory);
+Read ONLY what is actually printed. Never guess a number. If a row is blurred, say so instead of inventing a value — being honest about what you cannot read is more useful than being confident and wrong.
 
-  const drop = $('drop');
-  ['dragenter', 'dragover'].forEach((ev) =>
-    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
-  ['dragleave', 'drop'].forEach((ev) =>
-    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
-  drop.addEventListener('drop', (e) => {
-    const f = e.dataTransfer?.files?.[0];
-    if (f) analyse(f);
-  });
-})();
+Return JSON exactly in this shape:
+{
+  "isLabReport": true|false,
+  "documentType": string,              // what this document actually is, e.g. "pathology lab report", "electricity bill", "prescription", "selfie"
+  "patientName": string|null,          // the name printed on the report
+  "reportDate": string|null,           // ISO date YYYY-MM-DD if you can read it
+  "labName": string|null,
+  "values": [
+    {
+      "testName": string,              // exactly as printed, e.g. "S. Creatinine"
+      "value": number|null,            // the numeric result; null if unreadable
+      "unit": string|null,             // exactly as printed, e.g. "mg/dL"
+      "printedRange": string|null,     // the normal range printed beside it, e.g. "0.7 - 1.3"
+      "legible": "clear"|"partial"|"unreadable"
+    }
+  ],
+  "unreadableSections": string[]       // parts of the page you could not read at all
+}`;
 
-async function loadHistory() {
-  if (!currentProfileId) return;
-  $('btnHistory').disabled = true;
-  $('btnHistory').textContent = 'Loading…';
-  await api('POST', '/v1/labs/demo-history', { profileId: currentProfileId });
-  $('btnHistory').textContent = '✓ 18 months loaded — now add a new report';
-  setTimeout(() => { $('btnHistory').disabled = false; $('btnHistory').textContent = 'Load 18 months of history'; }, 4000);
+function mockLabExtraction() {
+  return {
+    isLabReport: true,
+    documentType: 'pathology lab report (mock)',
+    patientName: null,
+    reportDate: null,
+    labName: null,
+    values: [
+      { testName: 'S. Creatinine', value: 1.8, unit: 'mg/dL', printedRange: '0.7 - 1.3', legible: 'clear' },
+      { testName: 'Blood Urea', value: 46, unit: 'mg/dL', printedRange: '15 - 40', legible: 'clear' },
+      { testName: 'HbA1c', value: 7.4, unit: '%', printedRange: '4.0 - 5.6', legible: 'clear' },
+      { testName: 'Haemoglobin', value: 12.1, unit: 'g/dL', printedRange: '13.0 - 17.0', legible: 'clear' },
+      { testName: 'Potassium', value: 5.4, unit: 'mEq/L', printedRange: '3.5 - 5.1', legible: 'partial' },
+      { testName: 'S. Creatnine', value: 9.9, unit: 'kg', printedRange: null, legible: 'partial' },
+    ],
+    unreadableSections: ['bottom-left block (smudged)'],
+    _source: 'mock',
+  };
+}
+
+async function extractReport(base64, mimeType) {
+  // ai.js already falls back to mock on any failure, but it does not know about
+  // this prompt, so we call the underlying path through a tiny shim.
+  return ai.readLabReport
+    ? ai.readLabReport(base64, mimeType, LAB_PROMPT)
+    : mockLabExtraction();
 }
 
 // ---------------------------------------------------------------------------
-// analyse — with the checks ticking through on screen, because watching a
-// machine check its own work is the whole point of this feature
+// THE GAUNTLET — six checks, each one verifiable, none of them an opinion.
 // ---------------------------------------------------------------------------
-const STEPS = [
-  'Reading the document…',
-  'Checking every test name against the reference list…',
-  'Checking units are valid for each test…',
-  'Checking each value is physically possible…',
-  "Comparing against the range printed on the report itself…",
-  'Looking up previous reports for this person…',
-  'Cross-checking against current medications…',
-];
 
-async function analyse(file) {
-  const ticker = $('ticker');
-  ticker.classList.remove('hidden');
-  ticker.innerHTML = '';
-  $('out').innerHTML = '';
+const PENALTY = {
+  unitWrong: 30,
+  impossible: 40,
+  readsDisagree: 35,
+  printedRangeMismatch: 25,
+  imageUnclear: 20,
+};
 
-  let i = 0;
-  const tick = setInterval(() => {
-    if (i >= STEPS.length) return;
-    const el = document.createElement('div');
-    el.className = 'line';
-    el.textContent = '· ' + STEPS[i++];
-    ticker.appendChild(el);
-    [...ticker.children].forEach((c, n) => c.classList.toggle('done', n < ticker.children.length - 1));
-  }, 260);
+function parsePrintedRange(text) {
+  if (!text) return null;
+  const m = String(text).match(/(-?\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  return [parseFloat(m[1]), parseFloat(m[2])];
+}
 
-  try {
-    const base64 = await fileToBase64(file);
-    const { analysis } = await api('POST', '/v1/labs/analyze', {
-      profileId: currentProfileId,
-      imageBase64: base64,
-      mimeType: file.type || 'image/jpeg',
-    });
-    clearInterval(tick);
-    lastAnalysis = analysis;
-    ticker.classList.add('hidden');
-    render(analysis);
-  } catch (err) {
-    clearInterval(tick);
-    ticker.innerHTML = `<div class="line done" style="color:var(--red)">Could not analyse: ${esc(err.message)}</div>`;
+function unitMatches(test, claimedUnit) {
+  if (!claimedUnit) return null; // nothing to check
+  const u = String(claimedUnit).toLowerCase().replace(/\s/g, '');
+  const ok = [test.unit, ...(test.altUnits || [])]
+    .map((x) => String(x).toLowerCase().replace(/\s/g, ''))
+    .filter(Boolean);
+  return ok.some((x) => x === u || u.includes(x) || x.includes(u));
+}
+
+// Runs one claimed value through every check and returns a verdict a human can read.
+function verifyValue(claim, profile, secondRead) {
+  const checks = [];
+  let score = 100;
+
+  // CHECK 1 — is this even a real test?
+  const test = ref.findTest(claim.testName);
+  if (!test) {
+    return {
+      testName: claim.testName,
+      value: claim.value,
+      unit: claim.unit,
+      verdict: 'unknown-test',
+      confidence: 0,
+      checks: [{ name: 'Test name recognised', pass: false,
+        detail: `"${claim.testName}" is not a test we have a reference range for` }],
+      show: false,
+    };
   }
-}
+  checks.push({ name: 'Test name recognised', pass: true, detail: test.name });
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result).split(',')[1]);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// render
-// ---------------------------------------------------------------------------
-function render(a) {
-  const trendKeys = Object.keys(a.trends || {});
-  activeTrendKey = trendKeys.find((k) => a.trends[k].worsening) || trendKeys[0] || null;
-
-  $('out').innerHTML = `
-    ${a.headline ? headlineHTML(a.headline) : ''}
-    ${a.docIssues?.length ? a.docIssues.map(issueHTML).join('') : ''}
-    ${trendKeys.length ? trendSectionHTML(a, trendKeys) : ''}
-    ${a.flags?.length ? `<h2 class="sec">Matters for this person</h2>${a.flags.map(flagHTML).join('')}` : ''}
-    <h2 class="sec">What we read — and how sure we are</h2>
-    <div class="tally">
-      <span>${a.summary.read} values read</span>
-      <span>${a.summary.verified} verified</span>
-      <span>${a.summary.probable} probable</span>
-      <span>${a.summary.refused} refused</span>
-      <span>${a.source === 'gemini' ? '✦ Gemini' : 'mock AI'}</span>
-    </div>
-    ${a.values.map(valueHTML).join('')}
-    ${a.rejected?.length ? `<h2 class="sec">Not guessed</h2>${a.rejected.map(refusedHTML).join('')}` : ''}
-    <p class="footer-note" style="text-align:left;margin-top:18px">${esc(a.disclaimer)}</p>
-  `;
-
-  wireTrendTabs(a);
-  drawTrend(a);
-}
-
-function headlineHTML(h) {
-  const dot = h.tone === 'critical' ? '🔴' : h.tone === 'warn' ? '🔶' : '🟢';
-  return `<div class="headline ${h.tone}"><span class="dot">${dot}</span><span>${esc(h.text)}</span></div>`;
-}
-
-function issueHTML(i) {
-  return `<div class="issue ${i.severity}">${esc(i.message)}</div>`;
-}
-
-function flagHTML(f) {
-  return `
-  <div class="flag">
-    <div class="risk">${esc(f.testName)} ${f.value}${esc(f.unit || '')} — ${esc(f.risk)}</div>
-    <div class="action">${esc(f.action)}</div>
-    <div class="meds">Because this person takes: ${esc(f.drugs.join(', '))}</div>
-  </div>`;
-}
-
-function valueHTML(v) {
-  const range = v.normalRange ? `normal ${v.normalRange[0]}–${v.normalRange[1]}` : 'no reference range';
-  const arrow = v.status === 'high' || v.status === 'critical-high' ? '▲'
-              : v.status === 'low' || v.status === 'critical-low' ? '▼' : '';
-  return `
-  <div class="val">
-    <div class="val-top">
-      <span class="val-name">${esc(v.testName)}</span>
-      <span class="conf ${v.verdict}">${v.verdict.toUpperCase()} · ${v.confidence}%</span>
-      <span class="val-num ${v.status}">${arrow} ${v.value} <small style="font-size:12px;font-weight:600">${esc(v.unit || '')}</small></span>
-    </div>
-    <div class="val-meta">${range}${v.failedChecks?.length ? ` · failed: ${v.failedChecks.join(', ')}` : ''}</div>
-    ${v.means ? `<div class="val-means">${esc(v.means)}</div>` : ''}
-    ${v.checks?.length ? `
-      <details class="checks">
-        <summary>Show the ${v.checks.length} checks</summary>
-        ${v.checks.map(checkHTML).join('')}
-      </details>` : ''}
-  </div>`;
-}
-
-function checkHTML(c) {
-  const cls = c.pass === true ? 'pass' : c.pass === false ? 'fail' : 'skip';
-  const mark = c.pass === true ? '✓' : c.pass === false ? '✕' : '–';
-  return `<div class="check ${cls}"><span class="m">${mark}</span><span class="d"><b>${esc(c.name)}</b> — ${esc(c.detail)}</span></div>`;
-}
-
-function refusedHTML(v) {
-  return `
-  <div class="refused">
-    <span class="val-name">${esc(v.testName)}</span>
-    <span class="conf rejected" style="margin-left:8px">confidence ${v.confidence}%</span>
-    <div class="why">${(v.checks || []).filter((c) => c.pass === false).map((c) => esc(c.detail)).join(' · ') || 'could not be read'}</div>
-    <strong>Not going to guess. Re-photograph this row.</strong>
-  </div>`;
-}
-
-// ---------------------------------------------------------------------------
-// THE CHART
-// One series, so no legend — the title names it. Normal range sits behind the
-// line as a quiet band; anything past the critical threshold gets a red band.
-// Only the last point is labelled. Everything else is recessive on purpose.
-// ---------------------------------------------------------------------------
-function trendSectionHTML(a, keys) {
-  return `
-  <div class="chart-card">
-    <div class="chart-tabs" role="tablist">
-      ${keys.map((k) => `
-        <button class="chart-tab" role="tab" data-key="${k}"
-          aria-selected="${k === activeTrendKey}">${esc(a.trends[k].testName)}${a.trends[k].worsening ? ' ⚠' : ''}</button>`).join('')}
-    </div>
-    <div id="chartHost"></div>
-  </div>`;
-}
-
-function wireTrendTabs(a) {
-  document.querySelectorAll('.chart-tab').forEach((b) =>
-    b.addEventListener('click', () => {
-      activeTrendKey = b.dataset.key;
-      document.querySelectorAll('.chart-tab').forEach((x) =>
-        x.setAttribute('aria-selected', String(x.dataset.key === activeTrendKey)));
-      drawTrend(a);
-    }));
-}
-
-function drawTrend(a) {
-  const host = $('chartHost');
-  if (!host || !activeTrendKey) return;
-  const t = a.trends[activeTrendKey];
-  if (!t) return;
-
-  const W = 720, H = 250;
-  const padL = 52, padR = 60, padT = 26, padB = 34;
-  const plotW = W - padL - padR, plotH = H - padT - padB;
-
-  const values = t.points.map((p) => p.value);
-  const lo0 = Math.min(...values, t.range ? t.range[0] : Infinity);
-  const hi0 = Math.max(...values, t.range ? t.range[1] : -Infinity,
-                       t.criticalHigh != null ? t.criticalHigh : -Infinity);
-  const pad = (hi0 - lo0) * 0.18 || 1;
-  const yMin = lo0 - pad, yMax = hi0 + pad;
-
-  const x = (i) => padL + (t.points.length === 1 ? plotW / 2 : (plotW * i) / (t.points.length - 1));
-  const y = (v) => padT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
-
-  // bands
-  let bands = '';
-  if (t.range) {
-    const yTop = y(t.range[1]), yBot = y(t.range[0]);
-    bands += `<rect x="${padL}" y="${yTop}" width="${plotW}" height="${Math.max(0, yBot - yTop)}"
-      fill="#2f8f5b" fill-opacity="0.07" />
-      <line x1="${padL}" y1="${yTop}" x2="${padL + plotW}" y2="${yTop}"
-        stroke="#2f8f5b" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="4 4" />`;
+  if (claim.value === null || claim.value === undefined || Number.isNaN(Number(claim.value))) {
+    return {
+      key: test.key, testName: test.name, value: null, unit: claim.unit,
+      verdict: 'unreadable', confidence: 0,
+      checks: [...checks, { name: 'Value readable', pass: false, detail: 'no number could be read' }],
+      show: true,
+    };
   }
-  if (t.criticalHigh != null && t.criticalHigh < yMax) {
-    const yc = y(t.criticalHigh);
-    bands += `<rect x="${padL}" y="${padT}" width="${plotW}" height="${Math.max(0, yc - padT)}"
-        fill="#b3122c" fill-opacity="0.07" />
-      <line x1="${padL}" y1="${yc}" x2="${padL + plotW}" y2="${yc}"
-        stroke="#b3122c" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="5 4" />
-      <text x="${padL + plotW}" y="${yc - 6}" text-anchor="end"
-        font-size="10.5" fill="#b3122c" font-weight="700">needs a doctor above ${t.criticalHigh}</text>`;
+  const value = Number(claim.value);
+
+  // CHECK 2 — is the unit right FOR THIS TEST?
+  const unitOk = unitMatches(test, claim.unit);
+  if (unitOk === false) {
+    score -= PENALTY.unitWrong;
+    checks.push({ name: 'Unit valid for this test', pass: false,
+      detail: `read "${claim.unit}", expected ${test.unit}` });
+  } else if (unitOk === true) {
+    checks.push({ name: 'Unit valid for this test', pass: true, detail: claim.unit });
+  } else {
+    checks.push({ name: 'Unit valid for this test', pass: null, detail: 'no unit printed' });
   }
 
-  // axis ticks — four, recessive
-  let gridY = '';
-  for (let k = 0; k <= 3; k++) {
-    const v = yMin + ((yMax - yMin) * k) / 3;
-    const yy = y(v);
-    gridY += `<line x1="${padL}" y1="${yy}" x2="${padL + plotW}" y2="${yy}"
-        stroke="#eae4dd" stroke-width="1" />
-      <text x="${padL - 9}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#918a83">${round(v)}</text>`;
+  // CHECK 3 — is the number physically possible in a living person?
+  const [lo, hi] = test.possible;
+  const possible = value >= lo && value <= hi;
+  if (!possible) score -= PENALTY.impossible;
+  checks.push({ name: 'Physically possible', pass: possible,
+    detail: possible ? `${value} is within survivable limits` : `${value} is outside anything survivable (${lo}–${hi})` });
+
+  // CHECK 4 — the free one. Does the range printed ON THE REPORT agree with ours?
+  const printed = parsePrintedRange(claim.printedRange);
+  const ours = ref.normalRange(test, profile?.sex);
+  if (printed && ours) {
+    const close = Math.abs(printed[0] - ours[0]) <= Math.max(0.5, ours[0] * 0.35) &&
+                  Math.abs(printed[1] - ours[1]) <= Math.max(0.5, ours[1] * 0.35);
+    if (!close) score -= PENALTY.printedRangeMismatch;
+    checks.push({ name: "Report's own printed range agrees", pass: close,
+      detail: close
+        ? `report says ${printed[0]}–${printed[1]}, we expect ${ours[0]}–${ours[1]}`
+        : `report says ${printed[0]}–${printed[1]} but we expect ${ours[0]}–${ours[1]} — one of them is misread` });
+  } else {
+    checks.push({ name: "Report's own printed range agrees", pass: null,
+      detail: 'no range printed beside this value' });
   }
 
-  const line = t.points.map((p, i) => `${i ? 'L' : 'M'}${x(i)},${y(p.value)}`).join(' ');
+  // CHECK 5 — did a second independent read agree?
+  if (secondRead) {
+    const twin = secondRead.find((v) => ref.findTest(v.testName)?.key === test.key);
+    const agree = twin && Number(twin.value) === value;
+    if (!agree) score -= PENALTY.readsDisagree;
+    checks.push({ name: 'Two separate reads agree', pass: !!agree,
+      detail: agree ? `both reads said ${value}` : `first read ${value}, second read ${twin ? twin.value : 'nothing'}` });
+  } else {
+    checks.push({ name: 'Two separate reads agree', pass: null, detail: 'single-read mode' });
+  }
 
-  const dots = t.points.map((p, i) => {
-    const out = t.range && (p.value > t.range[1] || p.value < t.range[0]);
-    const crit = t.criticalHigh != null && p.value >= t.criticalHigh;
-    const fill = crit ? '#b3122c' : out ? '#b3122c' : '#3a6fb0';
-    const r = i === t.points.length - 1 ? 6.5 : 5;
-    return `<circle cx="${x(i)}" cy="${y(p.value)}" r="${r}" fill="${fill}"
-      stroke="#ffffff" stroke-width="2"><title>${labelFor(p)} — ${p.value} ${esc(t.unit || '')}</title></circle>`;
-  }).join('');
+  // CHECK 6 — was that part of the image actually clear?
+  if (claim.legible === 'unreadable') score -= PENALTY.imageUnclear * 2;
+  else if (claim.legible === 'partial') score -= PENALTY.imageUnclear;
+  checks.push({ name: 'Image clear at this row', pass: claim.legible === 'clear',
+    detail: claim.legible || 'unknown' });
 
-  // only the last point gets a number
-  const last = t.points[t.points.length - 1];
-  const lastOut = t.range && (last.value > t.range[1] || last.value < t.range[0]);
-  const lastLabel = `<text x="${x(t.points.length - 1) + 12}" y="${y(last.value) + 5}"
-      font-size="16" font-weight="800" fill="${lastOut ? '#b3122c' : '#201a17'}">${last.value}</text>`;
+  const confidence = Math.max(0, Math.min(100, score));
+  const verdict = confidence >= 85 ? 'verified' : confidence >= 60 ? 'probable' : 'rejected';
 
-  const xLabels = t.points.map((p, i) =>
-    `<text x="${x(i)}" y="${H - 10}" text-anchor="middle" font-size="11" fill="#918a83">${esc(labelFor(p))}</text>`
-  ).join('');
+  // --- CONFIDENCE 2: is it abnormal? Pure lookup. No AI. ---
+  let status = 'normal', direction = null;
+  if (verdict !== 'rejected' && ours) {
+    if (value > ours[1]) { status = 'high'; direction = 'high'; }
+    else if (value < ours[0]) { status = 'low'; direction = 'low'; }
+    if (test.criticalHigh != null && value >= test.criticalHigh) status = 'critical-high';
+    if (test.criticalLow != null && value <= test.criticalLow) status = 'critical-low';
+  }
 
-  const deltaCls = t.worsening ? 'bad' : 'good';
-  const deltaTxt = `${t.changePct > 0 ? '+' : ''}${t.changePct}% across ${t.span} reports`;
-
-  host.innerHTML = `
-    <p class="chart-title">${esc(t.testName)}${t.unit ? ` <span style="font-weight:600;color:var(--muted);font-size:13px">${esc(t.unit)}</span>` : ''}</p>
-    <p class="chart-sub">
-      ${t.range ? `Normal ${t.range[0]}–${t.range[1]} · ` : ''}
-      <span class="chart-delta ${deltaCls}">${deltaTxt}</span>
-    </p>
-    <svg class="chart-svg" viewBox="0 0 ${W} ${H}" role="img"
-         aria-label="${esc(t.testName)} across ${t.span} reports, ${deltaTxt}">
-      ${gridY}
-      ${bands}
-      <path d="${line}" fill="none" stroke="#3a6fb0" stroke-width="2"
-            stroke-linejoin="round" stroke-linecap="round" />
-      ${dots}
-      ${lastLabel}
-      ${xLabels}
-      <line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}"
-            stroke="#ddd5cc" stroke-width="1" />
-    </svg>
-    <p class="chart-sub" style="margin-top:2px">
-      Every point is a separate report. Nobody had put them side by side before.
-    </p>`;
+  return {
+    key: test.key,
+    testName: test.name,
+    means: test.means,
+    value,
+    unit: claim.unit || test.unit,
+    normalRange: ours,
+    status,
+    direction,
+    verdict,
+    confidence,
+    checks,
+    failedChecks: checks.filter((c) => c.pass === false).map((c) => c.name),
+    show: true,
+  };
 }
 
-function labelFor(p) {
-  if (p.date === 'current') return 'this report';
-  const d = new Date(p.date);
-  if (Number.isNaN(d.getTime())) return String(p.date).slice(0, 10);
-  return d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+// ---------------------------------------------------------------------------
+// Trend — the hero visual. Same test, across every report we hold.
+// ---------------------------------------------------------------------------
+function buildTrends(currentValues, previousReports, profile) {
+  const trends = {};
+  const series = {};
+
+  const push = (key, date, value) => {
+    if (!key || value == null) return;
+    (series[key] ||= []).push({ date, value });
+  };
+
+  for (const r of previousReports || []) {
+    for (const v of r.values || []) {
+      if (v.verdict === 'rejected' || v.value == null) continue;
+      push(v.key, r.reportDate || r.createdAt, v.value);
+    }
+  }
+  for (const v of currentValues) {
+    if (v.verdict === 'rejected' || v.value == null) continue;
+    push(v.key, 'current', v.value);
+  }
+
+  for (const [key, pts] of Object.entries(series)) {
+    if (pts.length < 2) continue;
+    const test = ref.findTest(key);
+    const range = ref.normalRange(test, profile?.sex);
+    const first = pts[0].value, last = pts[pts.length - 1].value;
+    const changePct = first ? Math.round(((last - first) / first) * 100) : 0;
+
+    let movement = 'steady';
+    if (Math.abs(changePct) >= 10) movement = changePct > 0 ? 'rising' : 'falling';
+
+    // is it moving TOWARDS trouble, or away from it?
+    let worsening = false;
+    if (range) {
+      if (last > range[1] && changePct > 0) worsening = true;
+      if (last < range[0] && changePct < 0) worsening = true;
+    }
+
+    trends[key] = {
+      key, testName: test?.name || key, unit: test?.unit,
+      points: pts, range,
+      criticalHigh: test?.criticalHigh ?? null,
+      criticalLow: test?.criticalLow ?? null,
+      changePct, movement, worsening,
+      span: pts.length,
+    };
+  }
+  return trends;
 }
 
-function round(v) {
-  if (Math.abs(v) >= 1000) return Math.round(v);
-  if (Math.abs(v) >= 10) return Math.round(v * 10) / 10;
-  return Math.round(v * 100) / 100;
+// ---------------------------------------------------------------------------
+// The whole job.
+// ---------------------------------------------------------------------------
+async function analyseReport({ base64, mimeType, profile, previousReports }) {
+  const doubleRead = String(process.env.LAB_DOUBLE_READ || '').toLowerCase() === 'true';
+
+  const first = await extractReport(base64, mimeType);
+  const second = doubleRead ? (await extractReport(base64, mimeType))?.values : null;
+
+  // --- DOCUMENT VALIDATION, five levels ---
+  const docIssues = [];
+  if (first.isLabReport === false) {
+    docIssues.push({ level: 'wrong-document', severity: 'stop',
+      message: `This does not look like a lab report — it looks like a ${first.documentType || 'different document'}.` });
+  }
+  if (first.reportDate) {
+    const age = (Date.now() - new Date(first.reportDate).getTime()) / (1000 * 60 * 60 * 24 * 365);
+    if (age > 2) docIssues.push({ level: 'expired', severity: 'warn',
+      message: `This report is about ${Math.floor(age)} years old. Values may have changed since.` });
+  }
+  if (first.patientName && profile?.fullName) {
+    const a = first.patientName.toLowerCase().replace(/[^a-z]/g, '');
+    const b = profile.fullName.toLowerCase().replace(/[^a-z]/g, '').replace('demo', '');
+    if (a && b && !a.includes(b.slice(0, 5)) && !b.includes(a.slice(0, 5))) {
+      docIssues.push({ level: 'wrong-person', severity: 'stop',
+        message: `The report says "${first.patientName}" but this profile is "${profile.fullName}". These may be two different people.` });
+    }
+  }
+  if (first.unreadableSections?.length) {
+    docIssues.push({ level: 'unreadable', severity: 'warn',
+      message: `Could not read: ${first.unreadableSections.join(', ')}. Re-photograph those parts.` });
+  }
+
+  // --- verify every claimed value ---
+  const all = (first.values || []).map((v) => verifyValue(v, profile, second));
+  const values = all.filter((v) => v.show);
+  const rejected = values.filter((v) => v.verdict === 'rejected' || v.verdict === 'unreadable');
+  const usable = values.filter((v) => v.verdict === 'verified' || v.verdict === 'probable');
+
+  if (usable.some((v) => v.confidence < 85)) {
+    docIssues.push({ level: 'ambiguous', severity: 'warn',
+      message: `${usable.filter((v) => v.confidence < 85).length} value(s) are probable but not confirmed — a human should check them.` });
+  }
+
+  // --- CONFIDENCE 3: does it matter for THIS person? drug rules, from a table ---
+  const flags = [];
+  for (const v of usable) {
+    if (!v.direction) continue;
+    for (const rule of ref.drugRulesFor(v.key, v.direction, profile?.medications)) {
+      flags.push({
+        testName: v.testName, value: v.value, unit: v.unit,
+        drugs: rule.drugs.filter((d) => (profile?.medications || []).join(' ').toLowerCase().includes(d)),
+        risk: rule.risk, action: rule.action,
+      });
+    }
+  }
+
+  const trends = buildTrends(usable, previousReports, profile);
+
+  // the single most important thing on the page
+  const criticals = usable.filter((v) => String(v.status).startsWith('critical'));
+  const worsening = Object.values(trends).filter((t) => t.worsening);
+
+  let headline = null;
+  if (criticals.length) {
+    headline = { tone: 'critical',
+      text: `${criticals[0].testName} is at a level that needs a doctor today.` };
+  } else if (flags.length) {
+    headline = { tone: 'critical', text: flags[0].risk + ' ' + flags[0].action };
+  } else if (worsening.length) {
+    const t = worsening[0];
+    headline = { tone: 'warn',
+      text: `${t.testName} has been ${t.movement} across ${t.span} reports — ${t.changePct > 0 ? '+' : ''}${t.changePct}%.` };
+  } else if (usable.some((v) => v.status !== 'normal')) {
+    headline = { tone: 'warn', text: `${usable.filter((v) => v.status !== 'normal').length} value(s) are outside the normal range.` };
+  } else if (usable.length) {
+    headline = { tone: 'good', text: 'Everything we could verify is within the normal range.' };
+  }
+
+  return {
+    source: first._source || 'mock',
+    documentType: first.documentType,
+    patientName: first.patientName,
+    reportDate: first.reportDate,
+    labName: first.labName,
+    docIssues,
+    values: usable,
+    rejected,
+    flags,
+    trends,
+    headline,
+    summary: {
+      read: values.length,
+      verified: usable.filter((v) => v.verdict === 'verified').length,
+      probable: usable.filter((v) => v.verdict === 'probable').length,
+      refused: rejected.length,
+      abnormal: usable.filter((v) => v.status !== 'normal').length,
+    },
+    disclaimer: 'GoldenBay organises and checks what the report says. It does not diagnose. Discuss anything flagged here with a doctor.',
+  };
 }
+
+module.exports = { analyseReport, verifyValue, buildTrends, LAB_PROMPT, mockLabExtraction };
