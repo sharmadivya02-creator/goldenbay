@@ -6,6 +6,7 @@
   <title>GoldenBay — Family Emergency</title>
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="app.css" />
+  <link rel="stylesheet" href="/clinical.css" />
 </head>
 <body>
   <div class="shell" id="shell">
@@ -24,7 +25,7 @@
     <!-- ============ HOME ============ -->
     <section class="screen" id="screen-home">
       <div class="greeting">
-        <div class="hi" id="greetHi">Hello 👋</div>
+        <div class="hi" id="greetHi">Hello</div>
         <div class="date" id="greetDate"></div>
       </div>
 
@@ -65,7 +66,7 @@
         </div>
       </div>
       <div class="dlist" id="detailList"></div>
-      <button class="primary" id="btnStartEmergencyFor" style="width:100%;padding:14px;font-size:15px">🚨 Start emergency for this person</button>
+      <button class="primary" id="btnStartEmergencyFor" style="width:100%;padding:14px;font-size:15px">Start emergency for this person</button>
     </section>
 
     <!-- ============ ROW DETAIL (allergies / meds / history / contact / hospital / insurance) ============ -->
@@ -189,6 +190,14 @@
       <div class="mlist">
         <button class="mrow" id="btnMoreManage" style="width:100%;text-align:left;border-radius:0;box-shadow:none"><span class="ic" id="moreManageIcon"></span><span style="flex:1">Manage family profiles<span class="sub">View, add or edit medical info</span></span><span class="chev" id="moreManageChev"></span></button>
       </div>
+
+      <div class="section-head"><h2>Your data</h2></div>
+      <div class="mlist">
+        <a href="/labs" class="mrow"><span class="ic" id="moreLabsIcon"></span><span style="flex:1">Lab reports<span class="sub">Read, verified, and put side by side</span></span><span class="chev" id="moreLabsChev"></span></a>
+        <a href="/copilot" target="_blank" class="mrow"><span class="ic" id="moreCopilotIcon"></span><span style="flex:1">CPR Co-Pilot<span class="sub">The phone watches you and keeps you on rhythm</span></span><span class="chev" id="moreCopilotChev"></span></a>
+        <a href="/privacy" target="_blank" class="mrow"><span class="ic" id="morePrivacyIcon"></span><span style="flex:1">Privacy &amp; your data<span class="sub">What we keep, for how long — and what we haven't built</span></span><span class="chev" id="morePrivacyChev"></span></a>
+      </div>
+
       <p class="footer-note">GoldenBay hackathon prototype · synthetic data only · AI organises information, it does not diagnose · v1</p>
     </section>
 

@@ -16,15 +16,58 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 let db = { profiles: [], emergencies: [], hospitals: [], labReports: [] };
 let saveTimer = null;
 
+// ---------------------------------------------------------------------------
+// ENCRYPTION AT REST
+//
+// If DATA_ENCRYPTION_KEY is set in .env, the database file is written encrypted
+// (AES-256-GCM) instead of plain text. Someone who copies db.json off the disk
+// gets ciphertext, not a list of people's allergies.
+//
+// If no key is set it stores plain text and says so loudly at startup — better
+// an honest warning than a silent false sense of safety.
+// ---------------------------------------------------------------------------
+const crypto = require('crypto');
+const MAGIC = 'GBENC1:';
+
+function encKey() {
+  const raw = (process.env.DATA_ENCRYPTION_KEY || '').trim();
+  if (!raw) return null;
+  // any passphrase becomes a proper 32-byte key
+  return crypto.createHash('sha256').update(raw).digest();
+}
+
+function encrypt(plaintext) {
+  const key = encKey();
+  if (!key) return plaintext;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return MAGIC + Buffer.concat([iv, tag, enc]).toString('base64');
+}
+
+function decrypt(raw) {
+  if (!raw.startsWith(MAGIC)) return raw;            // an older plain-text file
+  const key = encKey();
+  if (!key) throw new Error('db.json is encrypted but DATA_ENCRYPTION_KEY is not set');
+  const buf = Buffer.from(raw.slice(MAGIC.length), 'base64');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, buf.subarray(0, 12));
+  decipher.setAuthTag(buf.subarray(12, 28));
+  return Buffer.concat([decipher.update(buf.subarray(28)), decipher.final()]).toString('utf8');
+}
+
 function load() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   if (fs.existsSync(DB_FILE)) {
     try {
-      db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+      db = JSON.parse(decrypt(fs.readFileSync(DB_FILE, 'utf8')));
     } catch (err) {
-      console.error('[store] db.json was corrupt, starting fresh:', err.message);
+      console.error('[store] could not read db.json, starting fresh:', err.message);
     }
   }
+  console.log(encKey()
+    ? '[store] encryption at rest: ON'
+    : '[store] encryption at rest: OFF — set DATA_ENCRYPTION_KEY in .env to turn it on');
   for (const key of ['profiles', 'emergencies', 'hospitals', 'labReports']) {
     if (!Array.isArray(db[key])) db[key] = [];
   }
@@ -33,7 +76,7 @@ function load() {
 function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    fs.writeFile(DB_FILE, JSON.stringify(db, null, 2), (err) => {
+    fs.writeFile(DB_FILE, encrypt(JSON.stringify(db, null, 2)), (err) => {
       if (err) console.error('[store] failed to save db.json:', err.message);
     });
   }, 200);

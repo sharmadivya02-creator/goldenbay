@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GoldenBay — Privacy</title>
+  <link rel="stylesheet" href="app.css" />
+  <link rel="stylesheet" href="/clinical.css" />
+  <style>
+    .pv { max-width: 780px; margin: 0 auto; padding: 0 18px 70px }
+    .pv h1 { font-size: 30px; margin: 22px 0 4px }
+    .pv .sub { color: var(--muted); margin: 0 0 22px; font-size: 14px }
+    .pv h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+             color: var(--muted); margin: 30px 0 10px }
+    .pv p { line-height: 1.6; font-size: 15px }
+
+    .pv-card { background: var(--surface); border: 1px solid var(--border);
+               border-radius: var(--radius-md); padding: 15px 17px; margin-bottom: 10px }
+    .pv-card h3 { margin: 0 0 4px; font-size: 15.5px }
+    .pv-card p  { margin: 0; font-size: 14px; color: var(--text-soft) }
+
+    .row { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0;
+           border-top: 1px solid var(--border); font-size: 14.5px }
+    .row:first-of-type { border-top: 0 }
+    .row .mk { width: 20px; flex: none; font-weight: 800 }
+    .row.yes .mk { color: var(--green) }
+    .row.no  .mk { color: var(--red) }
+    .row .tx b { display: block }
+    .row .tx span { color: var(--muted); font-size: 13px }
+
+    .honest { background: var(--amber-soft); border: 1px solid #ecd6a8; color: #6b4a10;
+              border-radius: var(--radius-md); padding: 15px 17px; margin: 22px 0;
+              font-size: 14.5px; line-height: 1.55 }
+    .honest b { display: block; margin-bottom: 5px }
+
+    @media (max-width: 640px) {
+      .pv { padding: 0 14px 50px }
+      .pv h1 { font-size: 25px }
+      .pv p, .pv-card p { font-size: 14.5px }
+      .row { font-size: 14px }
+      .honest { font-size: 14px; padding: 14px 15px }
+    }
+  </style>
+</head>
+<body>
+  <div class="pv">
+    <div class="demo-banner">⚠️ DEMO — all data in this prototype is synthetic. No real person's health record has been processed by this system.</div>
+
+    <h1>What GoldenBay does with your data</h1>
+    <p class="sub">Notice version <span id="ver">—</span> · written to be read, not to be scrolled past</p>
+
+    <h2>Why we hold anything at all</h2>
+    <div id="purposes"></div>
+
+    <h2>How long we keep it</h2>
+    <div class="pv-card">
+      <h3>Emergency records — 30 days</h3>
+      <p>Deleted automatically after that. A finished emergency is not useful to anyone a month later.</p>
+    </div>
+    <div class="pv-card">
+      <h3>Health profiles and lab reports — until you delete them</h3>
+      <p>These are yours. They stay until you remove them, and removal is immediate and total.</p>
+    </div>
+    <div class="pv-card">
+      <h3>Live video from the CPR Co-Pilot — never stored</h3>
+      <p>Frames travel to the hospital screen and disappear. Nothing is written to disk. The feed stops within eight seconds of the page closing.</p>
+    </div>
+
+    <h2>What you can do</h2>
+    <div class="pv-card">
+      <h3>Get everything we hold</h3>
+      <p>One tap downloads a file containing every record tied to a person — profile, documents, emergencies, lab reports.</p>
+    </div>
+    <div class="pv-card">
+      <h3>Have it erased</h3>
+      <p>One tap deletes it. Not marked as deleted — removed.</p>
+    </div>
+    <div class="pv-card">
+      <h3>Withdraw consent</h3>
+      <p>You can take back permission at any time without deleting the record.</p>
+    </div>
+
+    <h2>Built — and honestly, not built</h2>
+    <div id="status"></div>
+
+    <div class="honest">
+      <b>We are not claiming DPDP compliance.</b>
+      The items above are the parts of the Digital Personal Data Protection framework
+      that a developer can build. Compliance is a legal status and needs more than code:
+      a named grievance officer, breach notification procedures, and an assessment of the
+      cross-border transfer that happens every time this app sends data to an AI model
+      running on servers outside India. None of those exist here.
+      Saying so is more useful to you than a badge would be.
+    </div>
+
+    <p class="footer-note">GoldenBay hackathon prototype · synthetic data only · not a real emergency service</p>
+  </div>
+
+  <script src="shared.js"></script>
+  <script>
+    (async function () {
+      const n = await api('GET', '/v1/privacy/notice');
+      document.getElementById('ver').textContent = n.version;
+
+      document.getElementById('purposes').innerHTML = n.purposes.map((p) => `
+        <div class="pv-card"><h3>${esc(p.label)}</h3><p>${esc(p.detail)}</p></div>`).join('');
+
+      const s = n.status;
+      const yes = Object.entries({
+        'A notice you can actually read': 'this page',
+        'Consent recorded': 'with a timestamp, against a specific version of this notice',
+        'Right to get your data': 'downloads as a file',
+        'Right to erasure': 'deletes, does not flag',
+        'Retention limits': 'emergencies purged after 30 days, automatically',
+        'Encryption at rest': s.implemented.encryptionAtRest
+          ? 'the database file is encrypted' : 'available — switched off in this demo',
+        'Video never stored': 'frames pass through and are gone',
+      });
+      const no = Object.entries(s.notImplemented);
+
+      document.getElementById('status').innerHTML =
+        yes.map(([k, v]) => `<div class="row yes"><span class="mk">✓</span><span class="tx"><b>${esc(k)}</b><span>${esc(v)}</span></span></div>`).join('') +
+        no.map(([k, v]) => `<div class="row no"><span class="mk">✕</span><span class="tx"><b>${esc(k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()))}</b><span>${esc(v)}</span></span></div>`).join('');
+    })();
+  </script>
+</body>
+</html>

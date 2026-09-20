@@ -136,7 +136,7 @@ function render(a) {
 }
 
 function headlineHTML(h) {
-  const dot = h.tone === 'critical' ? '🔴' : h.tone === 'warn' ? '🔶' : '🟢';
+  const dot = '';
   return `<div class="headline ${h.tone}"><span class="dot">${dot}</span><span>${esc(h.text)}</span></div>`;
 }
 
@@ -224,9 +224,25 @@ function drawTrend(a) {
   const t = a.trends[activeTrendKey];
   if (!t) return;
 
-  const W = 720, H = 250;
-  const padL = 52, padR = 60, padT = 26, padB = 34;
+  // The chart has to work on a 360px phone AND a laptop. An SVG scales, but its
+  // TEXT scales with it — a 11px label on a 720-wide viewBox squeezed into 360px
+  // renders at 5.5px and is unreadable. So on narrow screens we use a smaller
+  // viewBox and larger type, which comes out the right size after scaling.
+  const narrow = window.innerWidth < 640;
+
+  const W = narrow ? 380 : 720;
+  const H = narrow ? 230 : 250;
+  const padL = narrow ? 40 : 52;
+  const padR = narrow ? 34 : 60;
+  const padT = 26;
+  const padB = narrow ? 30 : 34;
   const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const fs = {
+    axis:  narrow ? 13 : 11,
+    note:  narrow ? 12 : 10.5,
+    value: narrow ? 19 : 16,
+  };
 
   const values = t.points.map((p) => p.value);
   const lo0 = Math.min(...values, t.range ? t.range[0] : Infinity);
@@ -254,7 +270,7 @@ function drawTrend(a) {
       <line x1="${padL}" y1="${yc}" x2="${padL + plotW}" y2="${yc}"
         stroke="#b3122c" stroke-opacity="0.5" stroke-width="1.5" stroke-dasharray="5 4" />
       <text x="${padL + plotW}" y="${yc - 6}" text-anchor="end"
-        font-size="10.5" fill="#b3122c" font-weight="700">needs a doctor above ${t.criticalHigh}</text>`;
+        font-size="${fs.note}" fill="#b3122c" font-weight="700">needs a doctor above ${t.criticalHigh}</text>`;
   }
 
   // axis ticks — four, recessive
@@ -264,7 +280,7 @@ function drawTrend(a) {
     const yy = y(v);
     gridY += `<line x1="${padL}" y1="${yy}" x2="${padL + plotW}" y2="${yy}"
         stroke="#eae4dd" stroke-width="1" />
-      <text x="${padL - 9}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#918a83">${round(v)}</text>`;
+      <text x="${padL - 9}" y="${yy + 4}" text-anchor="end" font-size="${fs.axis}" fill="#918a83">${round(v)}</text>`;
   }
 
   const line = t.points.map((p, i) => `${i ? 'L' : 'M'}${x(i)},${y(p.value)}`).join(' ');
@@ -273,7 +289,7 @@ function drawTrend(a) {
     const out = t.range && (p.value > t.range[1] || p.value < t.range[0]);
     const crit = t.criticalHigh != null && p.value >= t.criticalHigh;
     const fill = crit ? '#b3122c' : out ? '#b3122c' : '#3a6fb0';
-    const r = i === t.points.length - 1 ? 6.5 : 5;
+    const r = (i === t.points.length - 1 ? 6.5 : 5) * (narrow ? 1.25 : 1);
     return `<circle cx="${x(i)}" cy="${y(p.value)}" r="${r}" fill="${fill}"
       stroke="#ffffff" stroke-width="2"><title>${labelFor(p)} — ${p.value} ${esc(t.unit || '')}</title></circle>`;
   }).join('');
@@ -282,10 +298,12 @@ function drawTrend(a) {
   const last = t.points[t.points.length - 1];
   const lastOut = t.range && (last.value > t.range[1] || last.value < t.range[0]);
   const lastLabel = `<text x="${x(t.points.length - 1) + 12}" y="${y(last.value) + 5}"
-      font-size="16" font-weight="800" fill="${lastOut ? '#b3122c' : '#201a17'}">${last.value}</text>`;
+      font-size="${fs.value}" font-weight="800" fill="${lastOut ? '#b3122c' : '#201a17'}">${last.value}</text>`;
 
-  const xLabels = t.points.map((p, i) =>
-    `<text x="${x(i)}" y="${H - 10}" text-anchor="middle" font-size="11" fill="#918a83">${esc(labelFor(p))}</text>`
+  const showLabel = (i) => !narrow || i === 0 || i === t.points.length - 1;
+  const xLabels = t.points.map((p, i) => showLabel(i)
+    ? `<text x="${x(i)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === t.points.length - 1 ? 'end' : 'middle'}" font-size="${fs.axis}" fill="#918a83">${esc(labelFor(p))}</text>`
+    : ''
   ).join('');
 
   const deltaCls = t.worsening ? 'bad' : 'good';
@@ -313,6 +331,13 @@ function drawTrend(a) {
       Every point is a separate report. Nobody had put them side by side before.
     </p>`;
 }
+
+// redraw on rotate/resize so the phone and laptop layouts swap cleanly
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (lastAnalysis) drawTrend(lastAnalysis); }, 150);
+});
 
 function labelFor(p) {
   if (p.date === 'current') return 'this report';

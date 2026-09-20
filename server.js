@@ -31,6 +31,7 @@ const ai = require('./src/ai');
 const dispatch = require('./src/dispatch');
 const labs = require('./src/labs');
 const agent = require('./src/agent');
+const privacy = require('./src/privacy');
 
 const app = express();
 const server = http.createServer(app);
@@ -41,6 +42,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 store.load();
 seed();
+privacy.startRetentionJob();   // nothing is kept forever
 
 // ---------------------------------------------------------------------------
 // Pages (three views of the same emergency)
@@ -49,6 +51,7 @@ app.get('/family', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'f
 app.get('/hospital', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'hospital.html')));
 app.get('/copilot', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'copilot.html')));
 app.get('/labs', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'labs.html')));
+app.get('/privacy', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
 
 // ---------------------------------------------------------------------------
 // API
@@ -64,6 +67,54 @@ app.get('/v1/ai-status', async (_req, res) => {
 });
 
 app.get('/v1/hospitals', (_req, res) => res.json({ hospitals: store.all('hospitals') }));
+
+// ---------------------------------------------------------------------------
+// Privacy — the parts of DPDP that are code. See src/privacy.js for what this
+// deliberately does NOT claim.
+// ---------------------------------------------------------------------------
+
+// the notice itself, and an honest statement of what is and isn't implemented
+app.get('/v1/privacy/notice', (_req, res) => {
+  res.json({
+    version: privacy.NOTICE_VERSION,
+    purposes: privacy.PURPOSES,
+    retentionDays: privacy.RETENTION,
+    status: privacy.status(),
+  });
+});
+
+// record a consent against this version of the notice
+app.post('/v1/privacy/consent/:profileId', (req, res) => {
+  const updated = privacy.recordConsent(req.params.profileId, req.body?.purposes);
+  if (!updated) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'profile not found' } });
+  res.json({ profile: updated, consent: privacy.consentStatus(updated) });
+});
+
+app.post('/v1/privacy/withdraw/:profileId', (req, res) => {
+  const updated = privacy.withdrawConsent(req.params.profileId);
+  if (!updated) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'profile not found' } });
+  res.json({ profile: updated });
+});
+
+// RIGHT TO ACCESS — downloads as a file
+app.get('/v1/privacy/export/:profileId', (req, res) => {
+  const bundle = privacy.exportEverything(req.params.profileId);
+  if (!bundle) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'profile not found' } });
+  const safeName = String(bundle.profile.fullName || 'profile').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  res.setHeader('Content-Disposition', `attachment; filename="goldenbay-${safeName}.json"`);
+  res.setHeader('Content-Type', 'application/json');
+  res.send(JSON.stringify(bundle, null, 2));
+});
+
+// RIGHT TO ERASURE — actually deletes, does not flag
+app.delete('/v1/privacy/erase/:profileId', (req, res) => {
+  const result = privacy.eraseEverything(req.params.profileId);
+  if (!result) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'profile not found' } });
+  res.json({ erased: result });
+});
+
+// run the retention purge on demand (it also runs hourly)
+app.post('/v1/privacy/purge', (_req, res) => res.json(privacy.purgeExpired()));
 
 // ---------------------------------------------------------------------------
 // The Dispatch Agent
