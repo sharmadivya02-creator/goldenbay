@@ -69,23 +69,43 @@ function geminiEnabled() {
 async function callGemini(parts) {
   // gemini-2.5-flash was retired for new keys — 3.6-flash is the current fast model.
   const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
-  const res = await fetch(GEMINI_URL(model), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey(),
-    },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts }],
-      // NOTE: we deliberately do NOT set maxOutputTokens. On thinking models
-      // the reasoning tokens count against that budget, so a cap that looks
-      // generous can still cut the answer off mid-JSON. The default is large.
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.2,
+
+  // Fail fast instead of hanging: if Gemini doesn't respond within 12s,
+  // abort and let the caller fall back to the mock response. Without this,
+  // a stalled (not erroring) network call could leave a screen spinning
+  // forever instead of degrading gracefully like every other failure mode.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+
+  let res;
+  try {
+    res = await fetch(GEMINI_URL(model), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey(),
       },
-    }),
-  });
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts }],
+        // NOTE: we deliberately do NOT set maxOutputTokens. On thinking models
+        // the reasoning tokens count against that budget, so a cap that looks
+        // generous can still cut the answer off mid-JSON. The default is large.
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+        },
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Gemini timed out after 12s');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Gemini HTTP ${res.status}: ${body.slice(0, 300)}`);

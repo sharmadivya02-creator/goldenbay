@@ -127,6 +127,9 @@ function goTab(tab, opts = {}) {
   // the tab bar has no "detail"/"rowdetail" entry — keep Profiles highlighted while viewing a person
   if (tab === 'detail' || tab === 'rowdetail') document.querySelector('.tab-btn[data-tab="profiles"]').classList.add('active');
   if (tab !== 'emergency') $('topbar').classList.remove('hidden');
+  // the header + demo banner go dark with the emergency screen, so the top of
+  // the frame reads as one block instead of a light/dark seam
+  $('shell').classList.toggle('emg-mode', tab === 'emergency');
   if (tab === 'home') renderHome();
   if (tab === 'profiles') renderProfilesList();
   if (tab === 'emergency') renderEmergencyChip();
